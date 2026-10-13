@@ -879,7 +879,7 @@ async function up(opts: Options, port: number): Promise<void> {
     if (!src) continue;
     const usage = health.accounts?.find((a) => a.id === acc.id)?.usageStatus;
     const state = src.ok ? plural(src.sessions, tr('sessão aberta'), tr('sessões abertas')) : tr('erro ao ler ({0})', [src.error ?? tr('desconhecido')]);
-    say(tr('  Conta {0} ({1}): {2}{3}', [acc.short, acc.id, state, usage ? ` · ${USAGE_STATUS[usage]}` : '']));
+    say(`  ${acc.name} (${acc.id}): ${state}${usage ? ` · ${USAGE_STATUS[usage]}` : ''}`);
   }
   for (const m of codexMounts) {
     const src = health.sources?.find((s) => s.label === m.account.id && s.provider === 'codex');

@@ -2083,7 +2083,6 @@ export const ES: Readonly<Record<string, string>> = {
   "sessão aberta": "sesión abierta",
   "sessões abertas": "sesiones abiertas",
   "erro ao ler ({0})": "error al leer ({0})",
-  "  Conta {0} ({1}): {2}{3}": "  Cuenta {0} ({1}): {2}{3}",
   "  Sobrou do CodeTown; depois de conferir o escritório, apague com: {0}": "  Quedó de CodeTown; después de revisar la oficina, bórralo con: {0}",
   "  Logs: npm run docker:logs · Parar: npm run docker:down": "  Logs: npm run docker:logs · Detener: npm run docker:down",
   "não consegui conferir o mod do Habblaud ({0}).": "no se pudo verificar el mod de Habblaud ({0}).",
