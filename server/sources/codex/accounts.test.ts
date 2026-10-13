@@ -77,7 +77,7 @@ describe('contas do Codex', () => {
     ]);
     // As contas do Claude Code não pegam o override do Codex (nem pela pasta montada).
     expect(discoverClaudeDirs(env, h.dir)).not.toContain(mounted);
-    expect(detectAccounts([join(h.dir, '.codex-claude')], { home: h.dir, env: { HABBLAUD_ACCOUNTS: JSON.stringify([{ id: '.codex-claude', provider: 'codex', name: 'Codex' }]) } })[0].name).toBe('Conta A');
+    expect(detectAccounts([join(h.dir, '.codex-claude')], { home: h.dir, env: { HABBLAUD_ACCOUNTS: JSON.stringify([{ id: '.codex-claude', provider: 'codex', name: 'Codex' }]) } })[0].name).toBe('Claude Code');
   });
 
   it('plano do rate_limits para exibir', () => {

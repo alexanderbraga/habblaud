@@ -462,7 +462,7 @@ describe('ClaudeWatcher', () => {
     expect(a.role).toBe('Agente frinus');
     const texts = c.notices.map((n) => n.text);
     expect(texts).toContain('🏗️ Nova sala: loja');
-    expect(texts).toContain(`👋 ${a.name} chegou em loja (Conta A)`);
+    expect(texts).toContain(`👋 ${a.name} chegou em loja (Claude Code)`);
   });
 });
 

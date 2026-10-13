@@ -146,6 +146,20 @@ describe('detecção de contas', () => {
     expect(JSON.stringify(accs)).not.toContain('nao-pode-vazar');
   });
 
+  it('uma conta só se chama "Claude Code" (como a do Codex); com várias, "Conta <atalho>"', () => {
+    const tmp = tempDir();
+    try {
+      const home = tmp.dir;
+      mkdirSync(join(home, '.claude', 'projects'), { recursive: true });
+      const [only] = detectAccounts([join(home, '.claude')], { home, env: {} });
+      expect(only).toMatchObject({ short: 'A', name: 'Claude Code' });
+      const named = detectAccounts([join(home, '.claude')], { home, env: { HABBLAUD_ACCOUNTS: JSON.stringify([{ id: '.claude', name: 'Trabalho' }]) } });
+      expect(named[0].name).toBe('Trabalho');
+    } finally {
+      tmp.cleanup();
+    }
+  });
+
   it('HABBLAUD_ACCOUNTS (Docker) sobrepõe metadados casando por id ou mountDir', () => {
     const env = {
       HABBLAUD_ACCOUNTS: JSON.stringify([

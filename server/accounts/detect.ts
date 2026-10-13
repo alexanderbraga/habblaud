@@ -384,7 +384,8 @@ export function detectAccounts(dirs: string[], opts: { home?: string; env?: Node
       id: p.id,
       configDir: str(p.ov?.configDir) ?? p.dir,
       short,
-      name: str(p.ov?.name) ?? tr('Conta {0}', [short]),
+      // Uma conta só leva o nome da ferramenta (como a do Codex); com várias, o atalho as distingue.
+      name: str(p.ov?.name) ?? (dirs.length > 1 ? tr('Conta {0}', [short]) : 'Claude Code'),
       color: str(p.ov?.color) ?? ACCOUNT_COLORS[i % ACCOUNT_COLORS.length],
     };
     const email = str(p.ov?.email) ?? p.cfg.email;

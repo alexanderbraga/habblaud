@@ -37,6 +37,10 @@ do meio (0.**3**.0).
   monta só `~/.grok/sessions`, somente leitura. `HABBLAUD_GROK=0` desliga. O cartão de uso do Grok mostra a
   barra da semana como os outros (o plano dele não tem a janela de 5 h); como o Grok não informa o limite, 100% é o seu
   maior gasto já registrado numa semana (a dica mostra o custo no preço da API da xAI e os tokens).
+### Mudado
+
+- Com uma conta só do Claude Code (e sem atalho no shell), ela se chama **Claude Code**, como a do Codex se chama
+  Codex, no lugar de "Conta A". Com várias contas, continua "Conta <atalho>"; `HABBLAUD_ACCOUNTS` continua mandando.
 
 ## [0.11.0] - 2026-10-13
 
