@@ -5,7 +5,7 @@
 <h1 align="center">Habblaud</h1>
 
 <p align="center">
-  <b>The virtual office for your Claude Code (and Codex) agents.</b><br />
+  <b>The virtual office for your Claude Code (Codex and Grok) agents.</b><br />
   Each project becomes a room, and each agent becomes a pixel-art character that shows, in real time, what it's doing.
 </p>
 
@@ -650,11 +650,14 @@ model, tokens, terminal and history. The account chip is outlined and carries th
 - **Nothing to install:** Habblaud reads what Grok itself writes to `~/.grok` (or `GROK_HOME`): the list of open
   sessions (`active_sessions.json`) and, for each session, the conversation (`updates.jsonl`) and the summary
   (`summary.json`). It never reads `auth.json` or `config.toml`.
-- **Not yet possible:** approving requests or sending messages from the office, and Grok doesn't report usage limits
-  (its plan only has a weekly limit, so its usage card shows just the weekly bar, like the others; 100% is your highest
-  spend ever recorded in a week, summed from each session's `usage.json`, and the tooltip shows the cost at the xAI API
-  price and the tokens). An open approval request doesn't raise the character's hand: it stays
-  "working" until the turn ends.
+- **Usage:** the Grok account gets its card in the top bar, like Claude Code's and Codex's. Grok's plan only has a
+  weekly limit, so the card shows the **weekly** bar (the 5-hour one stays **—**, as on a Codex account without it).
+  Grok doesn't say how much the limit is: **100% is your highest spend ever recorded in a week**, summed from the
+  `usage.json` each session keeps (tokens and cost of every turn). The week starts at the first turn, like Claude
+  Code's windows, and **↻** shows when it closes. The tooltip shows the cost (at the xAI API price; on a subscription
+  it's only a reference) and the tokens of the last 7 days. Nothing to install.
+- **Not yet possible:** approving requests or sending messages from the office. An open approval request doesn't raise
+  the character's hand: it stays "working" until the turn ends.
 - `grok -p` sessions (without the TUI) and subagent sessions don't join the office; subagent ones are also left out of
   the history. A session only counts as open while its process really is `grok`.
 - **In Docker** `docker:up` mounts only `~/.grok/sessions`, read-only. Inside, the list of open sessions doesn't work
@@ -714,6 +717,9 @@ Want to see the office full without having any sessions open?
 > **Codex** accounts come in on their own (each `~/.codex*` folder or `CODEX_HOME` is an account; the letter comes from an
 > `alias x='CODEX_HOME=… codex'`, if there is one) and their usage comes from Codex's files; see [Codex](#codex). The rest
 > of this section is about Claude Code.
+>
+> The **Grok** account (`~/.grok` or `GROK_HOME`) also comes in on its own and has only the **weekly** bar; see
+> [Grok](#grok).
 
 If you use more than one Claude Code account (for example, a `c` shortcut with `~/.claude` and a `d` with
 `CLAUDE_CONFIG_DIR=~/.claude-conta2`), Habblaud shows them all together: each agent carries its account's chip and the top bar

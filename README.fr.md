@@ -5,7 +5,7 @@
 <h1 align="center">Habblaud</h1>
 
 <p align="center">
-  <b>Le bureau virtuel de vos agents Claude Code (et Codex).</b><br />
+  <b>Le bureau virtuel de vos agents Claude Code (Codex et Grok).</b><br />
   Chaque projet devient une salle, chaque agent un personnage en pixel art qui montre, en temps réel, ce qu'il est en train de faire.
 </p>
 
@@ -682,12 +682,15 @@ activité, tâches, titre, modèle, tokens, terminal et historique. La puce du c
 - **Rien à installer :** Habblaud lit ce que Grok enregistre lui-même dans `~/.grok` (ou `GROK_HOME`) : la liste des
   sessions ouvertes (`active_sessions.json`) et, pour chaque session, la conversation (`updates.jsonl`) et le résumé
   (`summary.json`). Il ne lit jamais `auth.json` ni `config.toml`.
-- **Pas encore possible :** approuver des demandes ou envoyer des messages depuis le bureau, et Grok n'indique pas de
-  limite d'utilisation (son abonnement n'a qu'une limite
-  hebdomadaire, donc sa carte d'utilisation ne montre que la barre de la semaine, comme les autres ; 100 % correspond à
-  votre plus grosse dépense jamais enregistrée sur une semaine, additionnée depuis le `usage.json` de chaque session, et
-  l'info-bulle montre le coût au prix de l'API xAI et les tokens). Une demande d'approbation ouverte ne fait pas
-  lever la main au personnage : il reste « au travail » jusqu'à la fin du tour.
+- **Utilisation :** le compte Grok a sa carte dans la barre du haut, comme ceux de Claude Code et de Codex. L'abonnement
+  Grok n'a qu'une limite hebdomadaire, donc la carte montre la barre de la **semaine** (celle de 5 h reste à **—**, comme
+  pour un compte Codex qui ne l'a pas). Grok n'indique pas la valeur de la limite : **100 % correspond à votre plus
+  grosse dépense jamais enregistrée sur une semaine**, additionnée depuis le `usage.json` que garde chaque session
+  (tokens et coût de chaque tour). La semaine commence au premier tour, comme les fenêtres de Claude Code, et le **↻**
+  indique quand elle se termine. L'info-bulle montre le coût (au prix de l'API xAI ; avec un abonnement, ce n'est qu'une
+  référence) et les tokens des 7 derniers jours. Rien à installer.
+- **Pas encore possible :** approuver des demandes ou envoyer des messages depuis le bureau. Une demande d'approbation
+  ouverte ne fait pas lever la main au personnage : il reste « au travail » jusqu'à la fin du tour.
 - Les sessions `grok -p` (sans le TUI) et celles de sous-agents n'entrent pas dans le bureau ; celles de sous-agent
   restent aussi hors de l'historique. Une session ne compte comme ouverte que tant que son processus est vraiment
   `grok`.
@@ -750,6 +753,9 @@ Vous voulez voir le bureau plein sans avoir de sessions ouvertes ?
 > Les comptes **Codex** sont pris en compte automatiquement (chaque dossier `~/.codex*` ou `CODEX_HOME` est un compte ; la
 > lettre vient d'un `alias x='CODEX_HOME=… codex'`, s'il y en a un) et leur utilisation provient des fichiers de Codex ;
 > voir [Codex](#codex). Le reste de cette section concerne Claude Code.
+>
+> Le compte **Grok** (`~/.grok` ou `GROK_HOME`) est lui aussi pris en compte automatiquement et n'a que la barre de la
+> **semaine** ; voir [Grok](#grok).
 
 Si vous utilisez plus d'un compte Claude Code (par exemple, un raccourci `c` avec `~/.claude` et un `d` avec
 `CLAUDE_CONFIG_DIR=~/.claude-conta2`), Habblaud les affiche tous ensemble : chaque agent porte la pastille de son compte

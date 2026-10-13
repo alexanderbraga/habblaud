@@ -5,7 +5,7 @@
 <h1 align="center">Habblaud</h1>
 
 <p align="center">
-  <b>La oficina virtual de tus agentes de Claude Code (y de Codex).</b><br />
+  <b>La oficina virtual de tus agentes de Claude Code (de Codex y de Grok).</b><br />
   Cada proyecto se convierte en una sala, y cada agente, en un personaje en pixel art que muestra en tiempo real lo que está haciendo.
 </p>
 
@@ -682,11 +682,14 @@ tareas, título, modelo, tokens, terminal e historial. El chip de la cuenta es h
 - **Sin instalar nada:** Habblaud lee lo que el propio Grok guarda en `~/.grok` (o `GROK_HOME`): la lista de sesiones
   abiertas (`active_sessions.json`) y, de cada sesión, la conversación (`updates.jsonl`) y el resumen
   (`summary.json`). Nunca lee `auth.json` ni `config.toml`.
-- **Todavía no se puede** aprobar pedidos ni mandar mensajes desde la oficina, y Grok no informa límites de uso (su
-  plan solo tiene el límite semanal, así que la tarjeta de uso muestra solo la barra de la semana, como las demás; 100% es
-  tu mayor gasto registrado en una semana, sumado del `usage.json` de cada sesión, y la ayuda muestra el costo al precio
-  de la API de xAI y los tokens). Un pedido de aprobación abierto no levanta la mano del personaje: sigue
-  "trabajando" hasta que termina el turno.
+- **Uso:** la cuenta de Grok tiene su tarjeta en la barra de arriba, como las de Claude Code y Codex. El plan de Grok
+  solo tiene el límite semanal, así que la tarjeta muestra la barra de la **semana** (la de 5 h queda en **—**, como en
+  una cuenta de Codex sin ella). Grok no dice cuánto es el límite: **100% es tu mayor gasto registrado en una semana**,
+  sumado del `usage.json` que guarda cada sesión (tokens y costo de cada turno). La semana empieza en el primer turno,
+  como las ventanas de Claude Code, y el **↻** muestra cuándo cierra. La ayuda muestra el costo (al precio de la API de
+  xAI; en la suscripción es solo una referencia) y los tokens de los últimos 7 días. No hay nada que instalar.
+- **Todavía no se puede** aprobar pedidos ni mandar mensajes desde la oficina. Un pedido de aprobación abierto no
+  levanta la mano del personaje: sigue "trabajando" hasta que termina el turno.
 - Las sesiones de `grok -p` (sin el TUI) y las de subagentes no entran en la oficina; las de subagente también quedan
   fuera del historial. Una sesión solo cuenta como abierta mientras su proceso es de verdad `grok`.
 - **En Docker** `docker:up` monta solo `~/.grok/sessions`, de solo lectura. Dentro, la lista de sesiones abiertas no
@@ -748,6 +751,9 @@ agentes de la demo nunca entran en las estadísticas de verdad.
 > Las cuentas de **Codex** entran solas (cada carpeta `~/.codex*` o `CODEX_HOME` es una cuenta; la letra sale de un
 > `alias x='CODEX_HOME=… codex'`, si existe) y su uso viene de los archivos de Codex; consulta [Codex](#codex). El resto
 > de esta sección trata de Claude Code.
+>
+> La cuenta de **Grok** (`~/.grok` o `GROK_HOME`) también entra sola y tiene solo la barra de la **semana**; consulta
+> [Grok](#grok).
 
 Si usas más de una cuenta de Claude Code (por ejemplo, un atajo `c` con `~/.claude` y uno `d` con
 `CLAUDE_CONFIG_DIR=~/.claude-conta2`), Habblaud las muestra todas juntas: cada agente lleva el chip de su cuenta y la
