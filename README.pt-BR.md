@@ -630,7 +630,7 @@ chip da conta do Codex é vazado e leva o selo **CODEX**.
 - **Assumir daqui, Encerrar e Novo agente** também valem para o Codex. As sessões que o Habblaud abre ou assume rodam
   em **always-approve** (`approvalPolicy: "never"`, `sandbox: "danger-full-access"`), no `codex app-server`.
   Assumir encerra o TUI local conferido e retoma a mesma conversa; encerrar mantém a conversa salva.
-  **No Docker**, deixe `npm run codex:bridge` rodando no Mac: o auxiliar do host executa essas ações lá.
+  Como as do Claude Code, precisam de `HABBLAUD_PTY=1` (no `.env`) e de acesso local, porque rodam processos no computador. **No Docker**, deixe `npm run codex:bridge` rodando no Mac: o auxiliar do host executa essas ações lá.
 - **Responder às perguntas:** as perguntas das sessões do Codex abertas ou assumidas pelo Habblaud são respondidas
   no escritório. Sem página aberta ou sem resposta dentro do prazo, a pergunta é cancelada.
 - **Mandar mensagens:** a caixa **Mandar mensagem** usa o app-server nas sessões hospedadas pelo Habblaud, inclusive

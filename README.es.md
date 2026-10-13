@@ -662,7 +662,7 @@ chip de la cuenta de Codex es hueco y lleva el sello **CODEX**.
 - **Tomar el control aquí, Cerrar y Nuevo agente** también funcionan con Codex. Las sesiones que Habblaud abre o
   asume se ejecutan en **always-approve** (`approvalPolicy: "never"`, `sandbox: "danger-full-access"`) en
   `codex app-server`. Tomar el control cierra la TUI local verificada y retoma la misma conversación; cerrarla conserva
-  la conversación guardada. **En Docker**, deja `npm run codex:bridge` en ejecución en el Mac: el auxiliar del host
+  la conversación guardada. Como las de Claude Code, necesitan `HABBLAUD_PTY=1` (en el `.env`) y acceso local, porque ejecutan procesos en la computadora. **En Docker**, deja `npm run codex:bridge` en ejecución en el Mac: el auxiliar del host
   ejecuta esas acciones allí.
 - **Responder preguntas:** las preguntas de las sesiones de Codex abiertas o asumidas por Habblaud se responden
   desde la oficina. Sin una página abierta o sin respuesta dentro del plazo, la pregunta se cancela.

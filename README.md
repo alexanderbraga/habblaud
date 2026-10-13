@@ -632,7 +632,7 @@ Codex account chip is hollow and carries the **CODEX** tag.
 - **Take over here, End and New agent** also work for Codex. Sessions Habblaud opens or takes over run in
   **always-approve** mode (`approvalPolicy: "never"`, `sandbox: "danger-full-access"`) in `codex app-server`.
   Taking over ends the checked local TUI and resumes the same conversation; ending a session keeps the conversation saved.
-  **In Docker**, keep `npm run codex:bridge` running on the Mac: the host helper runs these actions there.
+  Like Claude Code's, they need `HABBLAUD_PTY=1` (in `.env`) and local access, because they run processes on the computer. **In Docker**, keep `npm run codex:bridge` running on the Mac: the host helper runs these actions there.
 - **Answering questions:** questions from Codex sessions opened or taken over by Habblaud are answered in the office.
   Without an open page or an answer before the deadline, the question is canceled.
 - **Sending messages:** the **Send message** box uses the app-server for sessions hosted by Habblaud, including

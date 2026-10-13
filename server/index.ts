@@ -280,10 +280,11 @@ late.ptys = ptys;
 late.ptyOff = ptyOff;
 
 // Um runtime por ferramenta. No Docker, o auxiliar roda o Codex e confere o TUI no computador do usuário.
-const hostRuntime = config.inDocker && codex ? new HostQueue() : undefined;
+const hostRuntime = config.inDocker && codex && ptyOptIn ? new HostQueue() : undefined;
 const codexHomeOf = (account: string) => accounts.entriesOf('codex').find((e) => e.id === account)?.detected.configDir;
 const codexApps = new Map<string, CodexAppServer | CodexAppServerLike>();
-const codexRuntime: CodexRuntime | undefined = config.terminal && codex && (codexBin || hostRuntime)
+// Assumir, encerrar e Novo agente rodam processos no computador: a mesma trava do Claude (HABBLAUD_PTY=1 e acesso local).
+const codexRuntime: CodexRuntime | undefined = config.terminal && ptyOptIn && codex && (codexBin || hostRuntime)
   ? new CodexRuntime({
       homeOf: codexHomeOf,
       agent: (id) => office.get(id),

@@ -661,7 +661,7 @@ seulement : Codex n'indique pas le coût). La pastille du compte Codex est évid
 - **Prendre le contrôle ici, Fermer et Nouvel agent** fonctionnent aussi pour Codex. Les sessions ouvertes ou reprises
   par Habblaud tournent en **always-approve** (`approvalPolicy: "never"`, `sandbox: "danger-full-access"`) dans
   `codex app-server`. La reprise ferme la TUI locale vérifiée et reprend la même conversation ; la fermeture conserve
-  la conversation enregistrée. **Dans Docker**, laissez tourner `npm run codex:bridge` sur le Mac : l'auxiliaire de
+  la conversation enregistrée. Comme celles de Claude Code, elles demandent `HABBLAUD_PTY=1` (dans le `.env`) et un accès local, car elles lancent des processus sur l'ordinateur. **Dans Docker**, laissez tourner `npm run codex:bridge` sur le Mac : l'auxiliaire de
   l'hôte y exécute ces actions.
 - **Répondre aux questions :** les questions des sessions Codex ouvertes ou reprises par Habblaud reçoivent leur
   réponse dans le bureau. Sans page ouverte ou sans réponse dans le délai imparti, la question est annulée.

@@ -58,6 +58,20 @@ async function serve(runtime: AgentRuntime, projectRoots?: string[], opts: { inD
 }
 
 describe('rotas pelo RuntimeSet', () => {
+  it('sem o runtime do Codex (HABBLAUD_PTY desligado): Novo agente do Codex responde 501 com o motivo, não 500', async () => {
+    const claude: AgentRuntime = {
+      provider: 'claude', capabilities: () => ({ stop: false, takeover: false, spawn: false }),
+      takeover: async (id) => ({ kind: 'hosted', agentId: id }), stop: async () => {},
+      spawn: async () => ({ error: 'unavailable', reason: 'x' }),
+    };
+    const s = await serve(claude, ['/p/loja']);
+    try {
+      const r = await s.post('/api/spawn', { provider: 'codex', folder: '/p/loja', prompt: 'x' });
+      expect(r.status).toBe(501);
+      expect((await r.json()).error).toMatch(/Novo agente/);
+    } finally { await s.close(); }
+  });
+
   it('spawn do Codex exige uma pasta absoluta válida antes de chamar o runtime e preserva erro de disponibilidade', async () => {
     const calls: string[] = [];
     const runtime: AgentRuntime = {
