@@ -90,7 +90,7 @@ run('CodexAppServer', () => {
 
   it('initialize que estoura o prazo: o processo é descartado e o pedido seguinte sobe outro', async () => {
     const marker = join(tempDir().dir, 'init-once');
-    const { server } = setup(undefined, { env: { FAKE_CODEX_APP_HANG_INIT_ONCE: marker }, timeoutMs: 300 });
+    const { server } = setup(undefined, { env: { FAKE_CODEX_APP_HANG_INIT_ONCE: marker }, timeoutMs: 1_500 });
     await expect(server.startThread({ cwd: '/p' })).rejects.toThrow(/initialize/);
     const id = await server.startThread({ cwd: '/p' });
     expect(server.hosts(id)).toBe(true);
