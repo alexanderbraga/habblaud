@@ -15,13 +15,24 @@
 // ~/.habblaud/attachments/), lê os arquivos das entregas (só de pastas de projeto conhecidas, da pasta temporária e dos
 // anexos) e transcreve o ditado com o Whisper local (whisper-cli + ffmpeg + modelo; ver server/dictation/whisper.ts).
 // Arquivos e ditado usam rodadas com espera: o Habblaud só responde quando chega trabalho (ou a cada 20 s).
+// Também executa as ações do Codex pedidas pelo container (assumir, encerrar, novo agente e mensagem numa sessão
+// hospedada): busca em POST /api/host/runtime/poll, roda num `codex app-server` daqui e confirma em
+// POST /api/host/runtime/ack. Pedidos do agente (aprovação, pergunta) vão para POST /api/permissions e esperam em
+// GET /api/permissions/:id/wait, o mesmo par do hook do Codex (mod/habblaud-codex/hook.mjs).
 // Ctrl+C para parar.
-import { statSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { basename, isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { isClaudeDir } from '../server/accounts/detect';
+import { accountIds, isClaudeDir } from '../server/accounts/detect';
 import { createCodexQueueRunner, findCodexBin, THREAD_ID, type CodexQueueResult, type CodexQueueRunner } from '../server/messages/codex';
+import type { ReleaseReason, WaitResult } from '../server/permissions/registry';
+import { CodexRuntime } from '../server/runtime/codex';
+import { findCodexTui, stopCodexTui } from '../server/runtime/codex-tui';
+import { CodexAppServer } from '../server/runtime/protocol/codex-app';
+import { discoverCodexDirs } from '../server/sources/codex/accounts';
 import { tr } from '../shared/i18n';
+import type { AgentInfo, PermissionAnswer } from '../shared/types';
 import { createCliRunner, createOpener, folderProblem, launch, parseSpawn, type CliRunner, type Opener, type SpawnHow } from '../server/spawn/spawn';
 import { runnableClaudeBin } from '../server/claude-bin';
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_PER_SPAWN, attachmentsRoot, promptWithAttachments, safeFileName, writeAttachments, type Attachment } from '../server/spawn/attachments';
@@ -29,7 +40,6 @@ import { createWhisperTranscriber, findWhisper, type Transcriber } from '../serv
 import { checkFile, insideKnownFolder, tempRoots } from '../server/deliveries/files';
 import { discoverClaudeDirs } from '../server/accounts/detect';
 import { HOST_WAIT_MS } from '../server/host-wait';
-import { readFileSync } from 'node:fs';
 
 export const DEFAULT_PORT = 4747;
 /** Intervalo entre as rodadas. */
@@ -107,29 +117,33 @@ export function checkMessage(raw: unknown): BridgeMessage | { id?: string; error
 
 /** POST JSON ao Habblaud local; null = fora do ar, tempo esgotado ou resposta ilegível. */
 export type Post = (path: string, body: unknown) => Promise<{ status: number; json: unknown } | null>;
+/** GET ao Habblaud local (a espera de /api/permissions/:id/wait). O prazo é o da chamada. */
+export type Get = (path: string, timeoutMs: number) => Promise<{ status: number; json: unknown } | null>;
+
+async function fetchJson(port: number, method: 'GET' | 'POST', path: string, body: unknown | undefined, timeoutMs: number): Promise<{ status: number; json: unknown } | null> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method,
+      // O guard do Habblaud exige JSON em todo POST da API (mesmo o corpo vazio da rodada). GET vai sem corpo.
+      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const text = await res.text();
+    let json: unknown;
+    try {
+      json = text ? JSON.parse(text) : undefined;
+    } catch {
+      json = undefined;
+    }
+    return { status: res.status, json };
+  } catch {
+    return null;
+  }
+}
 
 export function httpPost(port: number, timeoutMs = REQUEST_TIMEOUT_MS): Post {
-  return async (path, body) => {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}${path}`, {
-        method: 'POST',
-        // O guard do Habblaud exige JSON em todo POST da API (mesmo o corpo vazio da rodada).
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      const text = await res.text();
-      let json: unknown;
-      try {
-        json = text ? JSON.parse(text) : undefined;
-      } catch {
-        json = undefined;
-      }
-      return { status: res.status, json };
-    } catch {
-      return null;
-    }
-  };
+  return (path, body) => fetchJson(port, 'POST', path, body, timeoutMs);
 }
 
 export type RoundResult =
@@ -321,6 +335,166 @@ export async function filesRound(
   return { state: 'ok', results: results.map(({ id, ok, error }) => ({ id, ok, ...(error ? { error } : {}) })) };
 }
 
+/** Conta → CODEX_HOME visto aqui (descoberta local, ou o caminho que a ação do container mandou e existe). */
+const seenHomes = new Map<string, string>();
+
+function rememberHome(account: string, home: string): void {
+  if (!account || !home) return;
+  seenHomes.set(account, resolve(home));
+}
+
+/**
+ * Corpo de POST /api/permissions, o mesmo do hook do Codex (mod/habblaud-codex/hook.mjs, permissionBody): provider,
+ * conta, CODEX_HOME, session_id, tool_name, tool_input, timeout_ms e, se vierem string, agent_id, agent_type, cwd e
+ * turn_id. O `raw` é o que o CodexRuntime monta em onAgentRequest.
+ */
+function hookPermissionBody(raw: unknown, codexHomeOf: (account: string) => string | undefined): Rec | undefined {
+  const r = rec(raw);
+  const sessionId = typeof r?.session_id === 'string' ? r.session_id : undefined;
+  const tool = typeof r?.tool_name === 'string' ? r.tool_name : undefined;
+  if (!r || !sessionId || !tool) return undefined;
+  const account = typeof r.account === 'string' ? r.account : '';
+  const home = codexHomeOf(account);
+  const body: Rec = {
+    provider: 'codex',
+    account,
+    ...(home ? { codexHome: home } : {}),
+    session_id: sessionId,
+    tool_name: tool,
+    tool_input: rec(r.tool_input) ?? {},
+    timeout_ms: typeof r.timeout_ms === 'number' && Number.isFinite(r.timeout_ms) ? r.timeout_ms : 0,
+  };
+  for (const k of ['agent_id', 'agent_type', 'cwd', 'turn_id'] as const) if (typeof r[k] === 'string') body[k] = r[k];
+  return body;
+}
+
+const RELEASE_REASONS: readonly ReleaseReason[] = ['terminal', 'answered', 'expired', 'orphan', 'gone', 'unwatched', 'shutdown'];
+
+function releaseReason(v: unknown): ReleaseReason {
+  return typeof v === 'string' && (RELEASE_REASONS as readonly string[]).includes(v) ? (v as ReleaseReason) : 'gone';
+}
+
+/** A resposta de GET /api/permissions/:id/wait, no formato que o CodexRuntime entende. */
+function parseWait(json: unknown): WaitResult | undefined {
+  const r = rec(json);
+  if (!r) return undefined;
+  if (r.status === 'pending') return { status: 'pending' };
+  if (r.status === 'released') return { status: 'released', reason: releaseReason(r.reason) };
+  if (r.status !== 'decided') return undefined;
+  if (r.behavior === 'allow' || r.behavior === 'deny') {
+    return { status: 'decided', behavior: r.behavior, ...(typeof r.message === 'string' ? { message: r.message } : {}) };
+  }
+  if (r.behavior === 'answer' && Array.isArray(r.answers)) return { status: 'decided', behavior: 'answer', answers: r.answers as PermissionAnswer[] };
+  return undefined;
+}
+
+/** Registrar o pedido: se o Habblaud não responder nisso, ele está fora do ar (o mesmo prazo do hook). */
+const PERMISSION_REGISTER_MS = 2_000;
+/** Espera máxima de cada long-poll (o servidor responde "pending" e quem espera pergunta de novo). */
+const PERMISSION_POLL_S = 25;
+
+/**
+ * `permissions` do CodexRuntime local. O register do runtime é síncrono e o POST do hook não é: o id devolvido é um
+ * tíquete local; o POST /api/permissions acontece antes do GET /api/permissions/:id/wait (o mesmo par de chamadas do
+ * hook). Sem 201, ou sem decisão, a espera termina sem `decided` e o runtime recusa/cancela.
+ */
+export function createHostPermissions(
+  post: Post,
+  get: Get,
+  codexHomeOf: (account: string) => string | undefined,
+): {
+  register(raw: unknown): { id: string; expiresAt: number } | { skip: string };
+  wait(id: string, ms: number): { result: Promise<WaitResult> } | undefined;
+} {
+  const tickets = new Map<string, Promise<{ id: string; expiresAt: number } | null>>();
+  return {
+    register(raw) {
+      const body = hookPermissionBody(raw, codexHomeOf);
+      if (!body) return { skip: 'invalid' };
+      const id = randomUUID();
+      const timeout = typeof body.timeout_ms === 'number' && body.timeout_ms > 0 ? body.timeout_ms : 300_000;
+      tickets.set(
+        id,
+        post('/api/permissions', body)
+          .then((res) => {
+            if (!res || res.status !== 201) return null;
+            const j = rec(res.json);
+            if (!j || typeof j.id !== 'string') return null;
+            return { id: j.id, expiresAt: typeof j.expiresAt === 'number' ? j.expiresAt : Date.now() + timeout };
+          })
+          .catch(() => null),
+      );
+      return { id, expiresAt: Date.now() + timeout };
+    },
+    wait(id, ms) {
+      const pending = tickets.get(id);
+      if (!pending) return undefined;
+      return {
+        result: (async (): Promise<WaitResult> => {
+          try {
+            const reg = await pending;
+            if (!reg) return { status: 'released', reason: 'gone' };
+            const waitS = Math.max(0.05, Math.min(PERMISSION_POLL_S, ms / 1_000));
+            const r = await get(`/api/permissions/${encodeURIComponent(reg.id)}/wait?timeout=${waitS}`, waitS * 1_000 + 5_000);
+            const parsed = r && r.status === 200 ? parseWait(r.json) : undefined;
+            return parsed ?? { status: 'released', reason: 'gone' };
+          } catch {
+            return { status: 'released', reason: 'gone' };
+          }
+        })().then((parsed) => {
+          if (parsed.status !== 'pending') tickets.delete(id);
+          return parsed;
+        }),
+      };
+    },
+  };
+}
+
+/** O auxiliar não tem o escritório: o id da ação é "<conta>:<thread>". */
+function agentOf(id: string, homeOf: (account: string) => string | undefined): AgentInfo | undefined {
+  const sep = id.indexOf(':');
+  if (sep <= 0) return undefined;
+  const account = id.slice(0, sep);
+  const thread = id.slice(sep + 1);
+  if (!thread || !homeOf(account)) return undefined;
+  return { id, kind: 'main', provider: 'codex', account, sessionId: thread, roomId: '' } as AgentInfo;
+}
+
+/**
+ * Ações nas sessões do Codex pedidas pelo container (Docker): busca em /api/host/runtime/poll, roda cada uma no
+ * CodexRuntime local (app-server e TUI daqui) e confirma em /api/host/runtime/ack com os threads hospedados.
+ */
+export async function runtimeRound(post: Post, rt: CodexRuntime, hostedOf: (home: string) => string[], log: (line: string) => void = () => {}): Promise<RoundResult> {
+  const polled = await post('/api/host/runtime/poll', {});
+  if (!polled) return { state: 'down' };
+  const list = rec(polled.json)?.actions;
+  if (polled.status !== 200 || !Array.isArray(list)) return { state: 'refused', status: polled.status };
+  const results: BridgeResult[] = [];
+  for (const raw of list) {
+    const a = rec(raw);
+    const id = typeof a?.id === 'string' ? a.id : undefined;
+    const home = typeof a?.codexHome === 'string' ? a.codexHome : undefined;
+    if (!a || !id || !home || !existsSync(home)) continue;
+    if (typeof a.account === 'string') rememberHome(a.account, home);
+    const agentId = `${String(a?.account)}:${String(a?.thread ?? '')}`;
+    let r: { ok: boolean; error?: string };
+    try {
+      if (a?.op === 'spawn') r = 'error' in (await rt.spawn({ folder: String(a.folder), prompt: String(a.prompt ?? ''), account: String(a.account) })) ? { ok: false, error: tr('não consegui abrir o agente') } : { ok: true };
+      else if (a?.op === 'takeover') r = (await rt.takeover(agentId), { ok: true });
+      else if (a?.op === 'stop') r = (await rt.stop(agentId), { ok: true });
+      else if (a?.op === 'send') r = await rt.deliver({ codexHome: home, thread: String(a.thread), text: String(a.text) });
+      else r = { ok: false, error: tr('ação desconhecida') };
+    } catch (err) {
+      r = { ok: false, error: (err as Error).message };
+    }
+    const result = { id, ok: r.ok, ...(r.ok ? { hosted: hostedOf(home) } : { error: r.error }) };
+    results.push(result as BridgeResult);
+    await post('/api/host/runtime/ack', { results: [result] });
+    log(r.ok ? tr('✓ Codex: {0} ({1})', [String(a?.op), agentId]) : tr('✗ Codex: {0}: {1}', [String(a?.op), r.error ?? '']));
+  }
+  return { state: 'ok', results };
+}
+
 /** Repete uma rodada com espera: fora do ar, de 2 em 2 s; recusada (recurso desligado), a cada minuto. */
 async function waitLoop(roundFn: () => Promise<RoundResult>): Promise<never> {
   for (;;) {
@@ -331,6 +505,54 @@ async function waitLoop(roundFn: () => Promise<RoundResult>): Promise<never> {
   }
 }
 
+/**
+ * CodexRuntime do auxiliar: app-server e TUI de verdade neste computador. Cada CODEX_HOME tem o seu processo.
+ * Pedidos do agente seguem o par do hook (POST /api/permissions e GET /api/permissions/:id/wait).
+ */
+function createLocalCodexRuntime(bin: string, port: number): { rt: CodexRuntime; hostedOf: (home: string) => string[] } {
+  const dirs = discoverCodexDirs();
+  const ids = accountIds(dirs);
+  dirs.forEach((dir, i) => rememberHome(ids[i] ?? '', dir));
+  const apps = new Map<string, CodexAppServer>();
+  const homeOf = (account: string) => seenHomes.get(account);
+  const accountOfHome = (home: string): string => {
+    const key = resolve(home);
+    for (const [id, dir] of seenHomes) if (dir === key) return id;
+    return basename(key) || key;
+  };
+  const box: { rt?: CodexRuntime } = {};
+  const rt = new CodexRuntime({
+    homeOf,
+    agent: (id) => agentOf(id, homeOf),
+    accounts: () => [...seenHomes.keys()],
+    app: (home) => {
+      const key = resolve(home);
+      let app = apps.get(key);
+      if (!app) {
+        const account = accountOfHome(key);
+        rememberHome(account, key);
+        app = new CodexAppServer({
+          bin,
+          codexHome: key,
+          onAgentRequest: (req) => {
+            const runtime = box.rt;
+            if (!runtime) return Promise.resolve(req.kind === 'question' ? { kind: 'question', answers: null } : { kind: 'approval', allow: false });
+            return runtime.onAgentRequest(account, req);
+          },
+        });
+        apps.set(key, app);
+      }
+      return app;
+    },
+    queue: createCodexQueueRunner(bin),
+    permissions: createHostPermissions(httpPost(port, PERMISSION_REGISTER_MS), (path, timeoutMs) => fetchJson(port, 'GET', path, undefined, timeoutMs), homeOf),
+    tui: { find: findCodexTui, stop: stopCodexTui },
+    agentIdOf: (acc, thread) => `${acc}:${thread}`,
+  });
+  box.rt = rt;
+  return { rt, hostedOf: (home) => apps.get(resolve(home))?.threads() ?? [] };
+}
+
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed === 'help') {
@@ -339,6 +561,7 @@ async function main(): Promise<void> {
   }
   const bin = findCodexBin(process.env);
   const run = bin ? createCodexQueueRunner(bin) : undefined;
+  const codexRt = bin ? createLocalCodexRuntime(bin, parsed.port) : undefined;
   const open = createOpener();
   const claudeBin = runnableClaudeBin(process.env);
   const cli = claudeBin ? createCliRunner(claudeBin) : undefined;
@@ -379,6 +602,7 @@ async function main(): Promise<void> {
       if (spawned.state === 'refused') spawnRetryAt = Date.now() + REFUSED_RETRY_MS;
     }
     const r = run ? await round(post, run, log) : spawned;
+    if (codexRt) await runtimeRound(post, codexRt.rt, codexRt.hostedOf, log);
     const state =
       r.state === 'down'
         ? tr('Habblaud fora do ar em http://127.0.0.1:{0}; tentando de novo a cada {1} s.', [parsed.port, POLL_MS / 1_000])

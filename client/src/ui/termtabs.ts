@@ -8,6 +8,7 @@ import { moveAgent, orderAgents } from './agentorder';
 import { h, KeyedList, setAttr, setHidden, setText, setTitle } from './dom';
 import { activityFallback } from './model';
 import { ptyControllable, stopAgent } from './ptyapi';
+import { access } from '../net/access';
 import { createStatusDot, updateStatusDot } from './widgets';
 import { tr } from '../../../shared/i18n';
 
@@ -79,7 +80,7 @@ export class TermTabs {
         setHidden(b.children[3] as HTMLElement, !live);
         const close = b.children[4] as HTMLElement;
         const confirm = this.confirming === a.id;
-        setHidden(close, !ctx.terminals?.interactiveEnabled || !ptyControllable(a));
+        setHidden(close, ctx.store.replaying || !access().local || !ptyControllable(a) || a.canStop !== true);
         close.classList.toggle('is-confirm', confirm);
         setText(close, confirm ? tr('encerrar?') : '×');
         setTitle(close, confirm ? tr('Clique de novo para encerrar a sessão (a conversa fica salva)') : tr('Encerrar esta sessão'));
@@ -110,7 +111,8 @@ ${doing}` : ''}${live ? tr(' (interativo)') : ''}`);
 
   /** X da aba: o primeiro clique pede confirmação; o segundo encerra a sessão (aqui ou noutro terminal). */
   private closeTab(id: string): void {
-    if (!this.ctx.terminals?.interactiveEnabled || !ptyControllable(this.ctx.agent(id))) return;
+    const agent = this.ctx.agent(id);
+    if (this.ctx.store.replaying || !access().local || !ptyControllable(agent) || agent?.canStop !== true) return;
     if (this.confirming !== id) {
       this.resetConfirm();
       this.confirming = id;

@@ -9,6 +9,7 @@
 // local e (quando o navegador manda) Origin da mesma origem. A borda (http/guard.ts) já exige JSON nos POST.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { PtyError, type PtyManager } from '../pty/manager';
+import { RuntimeError, type RuntimeSet } from '../runtime/runtime';
 import { HttpError, readJson, sendJson } from './app';
 import { isLoopbackHost } from './guard';
 import { tr } from '../../shared/i18n';
@@ -23,8 +24,8 @@ function isLoopbackAddress(addr: string | undefined): boolean {
 }
 
 /** Motivo da recusa, ou null. */
-export function ptyRequestProblem(req: IncomingMessage): string | null {
-  if (!isLoopbackAddress(req.socket.remoteAddress)) return tr('o terminal interativo só pode ser usado no próprio computador');
+export function ptyRequestProblem(req: IncomingMessage, allowHostGateway = false): string | null {
+  if (!allowHostGateway && !isLoopbackAddress(req.socket.remoteAddress)) return tr('o terminal interativo só pode ser usado no próprio computador');
   const host = req.headers.host;
   if (!isLoopbackHost(host)) return tr('abra o Habblaud por http://localhost para usar o terminal interativo');
   const origin = req.headers.origin;
@@ -43,10 +44,10 @@ export function ptyRequestProblem(req: IncomingMessage): string | null {
   return null;
 }
 
-export function createPtyRoutes(ptys: PtyManager): (req: IncomingMessage, res: ServerResponse, path: string) => void {
+export function createPtyRoutes(ptys: PtyManager | undefined, runtimes?: RuntimeSet, opts: { onChange?: () => void; inDocker?: boolean } = {}): (req: IncomingMessage, res: ServerResponse, path: string) => void {
   const fail = (res: ServerResponse, err: unknown) => {
     if (res.headersSent) return void res.destroy();
-    if (err instanceof HttpError || err instanceof PtyError) sendJson(res, err.status, { error: err.message });
+    if (err instanceof HttpError || err instanceof PtyError || err instanceof RuntimeError) sendJson(res, err.status, { error: err.message });
     else sendJson(res, 500, { error: tr('erro interno') });
   };
   const notAllowed = (res: ServerResponse, allow: string) => {
@@ -66,20 +67,33 @@ export function createPtyRoutes(ptys: PtyManager): (req: IncomingMessage, res: S
   };
 
   const handle = async (req: IncomingMessage, res: ServerResponse, path: string) => {
-    const problem = ptyRequestProblem(req);
-    if (problem) throw new HttpError(403, problem);
     const method = req.method ?? 'GET';
     const action = AGENT_ACTION_ROUTE.exec(path);
+    // Só ações nos agentes atravessam o gateway do Docker; /api/pty/* continua restrito ao loopback.
+    const problem = ptyRequestProblem(req, opts.inDocker === true && method === 'POST' && !!action);
+    if (problem) throw new HttpError(403, problem);
     if (action) {
       if (method !== 'POST') return notAllowed(res, 'POST');
       const body = (await readJson(req)) as Record<string, unknown>;
       const id = decode(action[1]);
+      if (runtimes) {
+        if (action[2] === 'stop') {
+          await runtimes.stop(id);
+          opts.onChange?.();
+          return noContent(res);
+        }
+        const result = await runtimes.takeover(id, { cols: body?.cols, rows: body?.rows });
+        opts.onChange?.();
+        return sendJson(res, 201, result.kind === 'pty' ? result.pty : result);
+      }
+      if (!ptys) throw new HttpError(403, tr('terminal interativo desligado'));
       if (action[2] === 'stop') {
         await ptys.stop(id);
         return noContent(res);
       }
       return sendJson(res, 201, await ptys.takeover(id, { cols: body?.cols, rows: body?.rows }));
     }
+    if (!ptys) throw new HttpError(403, tr('terminal interativo desligado'));
     const [rawId, act] = path.slice('/api/pty'.length).split('/').filter(Boolean);
     if (!rawId) {
       if (method === 'GET') return sendJson(res, 200, { status: ptys.status(), ptys: ptys.list() });

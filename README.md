@@ -628,11 +628,16 @@ Codex account chip is hollow and carries the **CODEX** tag.
   answer in the **Asks for permission** card for up to **25 seconds** (`npm run codex:install -- --espera <s>`, from 5 to 120):
   **Approve** or **Deny** (with the reason). Unlike Claude Code, Codex only shows the approval in the terminal
   **after** the office answers or the time runs out — in the meantime the terminal shows "Waiting for an answer in
-  Habblaud…". There's no "always allow" or "interrupt", and Codex doesn't let you answer its questions from outside.
-- **Sending messages:** the **Send message** box works for Codex too, through `codex queue`: the message joins
-  the session's queue and Codex picks it up when it finishes what it's doing (up to about 10 seconds later). In Node mode
-  Habblaud runs the command itself; **in Docker**, keep `npm run codex:bridge` running on the Mac (the container can't
-  see your Codex).
+  Habblaud…". Hook approvals have no "always allow" or "interrupt" option.
+- **Take over here, End and New agent** also work for Codex. Sessions Habblaud opens or takes over run in
+  **always-approve** mode (`approvalPolicy: "never"`, `sandbox: "danger-full-access"`) in `codex app-server`.
+  Taking over ends the checked local TUI and resumes the same conversation; ending a session keeps the conversation saved.
+  **In Docker**, keep `npm run codex:bridge` running on the Mac: the host helper runs these actions there.
+- **Answering questions:** questions from Codex sessions opened or taken over by Habblaud are answered in the office.
+  Without an open page or an answer before the deadline, the question is canceled.
+- **Sending messages:** the **Send message** box uses the app-server for sessions hosted by Habblaud, including
+  steering an active turn. Observed TUI sessions keep using `codex queue`, which delivers after the current work ends
+  (up to about 10 seconds later). In Node mode Habblaud runs Codex itself; in Docker the host helper delivers.
 - **5-hour and weekly usage:** comes from Codex's own files and only refreshes while some session is running; the card
   shows how old the numbers are and "no quota" when the workspace has run out of credits.
 - **When the session comes in:** with the first message (that's when Codex records the project folder); a CLI that's open

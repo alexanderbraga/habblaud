@@ -15,9 +15,12 @@ import type { Hub } from './sse';
 import { handleStatsRoute } from './stats';
 import type { TerminalStreams } from './terminal';
 import { tr } from '../../shared/i18n';
-import type { SpawnService } from '../spawn/spawn';
+import { parseSpawn, type SpawnService } from '../spawn/spawn';
 import { ATTACHMENT_BODY_MAX, parseAttachment, type AttachmentStore } from '../spawn/attachments';
 import type { SpawnFolder } from '../spawn/folders';
+import type { HostQueue } from '../runtime/host-queue';
+import { RuntimeError, type RuntimeSet } from '../runtime/runtime';
+import { createPtyRoutes } from './pty';
 import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
 import type { DeliveryIndex } from '../deliveries/deliveries';
 import type { FileFetcher } from '../deliveries/fetcher';
@@ -65,6 +68,13 @@ export interface ApiDeps {
   codexLive?: CodexLive;
   /** Novo agente pelo escritório (/api/spawn e, para o auxiliar do host, /api/host/spawn/*; server/spawn/spawn.ts). */
   spawn?: SpawnService;
+  /** Ações comuns nos agentes, escolhidas pela ferramenta e com filtro por pasta. */
+  runtimes?: RuntimeSet;
+  /**
+   * Fila de ações do Codex para o auxiliar do host (Docker: assumir, encerrar, novo agente, mensagem hospedada;
+   * POST /api/host/runtime/poll|ack, server/runtime/host-queue.ts). Sem ela a rota responde 404.
+   */
+  hostRuntime?: HostQueue;
   /** Pastas sugeridas no "Novo agente" (GET /api/spawn/folders; spawn/folders.ts): projetos recentes. */
   spawnFolders?: () => Promise<SpawnFolder[]>;
   /** Anexos do "Novo agente" (POST /api/spawn/attachments; spawn/attachments.ts). */
@@ -258,6 +268,7 @@ export function modSummary(
 export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: ServerResponse, url: URL) => boolean {
   const { office, hub, accounts } = deps;
   const terminals = deps.terminal ? deps.terminals : undefined;
+  const pty = deps.pty ?? (deps.terminal && deps.runtimes ? createPtyRoutes(undefined, deps.runtimes, { inDocker: deps.inDocker, onChange: () => office.markDirty() }) : undefined);
 
   const isRemote = (req: IncomingMessage): boolean => !!deps.remote?.is(req);
   /**
@@ -318,7 +329,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
 
   const fail = (res: ServerResponse, err: unknown) => {
     if (res.headersSent) return void res.destroy();
-    if (err instanceof HttpError) sendJson(res, err.status, { error: err.message });
+    if (err instanceof HttpError || err instanceof RuntimeError) sendJson(res, err.status, { error: err.message });
     else sendJson(res, 500, { error: tr('erro interno') });
   };
 
@@ -437,8 +448,8 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       // Executa comandos na máquina: nunca pela porta remota, nem com login (o Host e o endereço de quem conecta não
       // bastam: o Tailscale chega pelo loopback e o Host se imita).
       if (isRemote(req)) sendJson(res, 403, { error: tr('o terminal interativo só pode ser usado no próprio computador') });
-      else if (!deps.pty) sendJson(res, 403, { error: tr('terminal interativo desligado (veja o log do servidor)') });
-      else deps.pty(req, res, path);
+      else if (!pty) sendJson(res, 403, { error: tr('terminal interativo desligado (veja o log do servidor)') });
+      else pty(req, res, path);
       return true;
     }
     const characterMatch = CHARACTER_ROUTE.exec(path);
@@ -472,6 +483,23 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       return true;
     }
     if (path === '/api/spawn' || path.startsWith('/api/spawn/')) {
+      if (path === '/api/spawn' && method === 'POST' && deps.runtimes) {
+        if (!trusted(req, 'spawn')) sendJson(res, 403, { error: denied(req, tr('agentes novos só são abertos pelo próprio computador (http://localhost)')) });
+        else readJson(req).then(async (body) => {
+          if ((body as { provider?: unknown } | null)?.provider === 'codex') {
+            const parsed = parseSpawn(body);
+            if ('error' in parsed) return sendJson(res, 400, { error: parsed.error });
+            const r = await deps.runtimes!.spawn('codex', body);
+            if ('spawn' in r) return sendJson(res, 201, r.spawn);
+            return sendJson(res, r.error === 'invalid' ? 400 : 503, { error: r.reason });
+          }
+          if (!deps.spawn) return sendJson(res, 403, { error: tr('novo agente pelo escritório desligado') });
+          const r = deps.spawn.submit(body);
+          if ('spawn' in r) return sendJson(res, 201, r.spawn);
+          sendJson(res, r.error === 'invalid' ? 400 : r.error === 'too-many' ? 429 : 409, { error: r.reason });
+        }).catch((err) => fail(res, err));
+        return true;
+      }
       // Abre uma sessão nova no app do Claude: roda código no computador, então a mesma trava das mensagens.
       const spawn = deps.spawn;
       if (!spawn) sendJson(res, 403, { error: tr('novo agente pelo escritório desligado') });
@@ -611,6 +639,26 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
             sendJson(res, 200, { ok: true });
           })
           .catch((err) => fail(res, err));
+      }
+      return true;
+    }
+    if (path === '/api/host/runtime/poll' || path === '/api/host/runtime/ack') {
+      // Docker: o auxiliar do host busca as ações do Codex e confirma com os threads que hospeda. Mesma trava do
+      // spawn do host (Host local; pela porta remota nem chega aqui, isLocalOnlyPath). Sem a fila, a rota não existe.
+      const queue = deps.hostRuntime;
+      if (!queue) sendJson(res, 404, { error: tr('rota desconhecida') });
+      else if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!(trusted(req, 'spawn') || trusted(req, 'messages')) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, tr('só o auxiliar do próprio computador')) });
+      } else {
+        readJson(req).then((body) => {
+          if (path === '/api/host/runtime/poll') sendJson(res, 200, { actions: queue.poll() });
+          else {
+            queue.ack(body);
+            office.markDirty();
+            res.writeHead(204, { 'Cache-Control': 'no-store' }).end();
+          }
+        }, (err) => fail(res, err));
       }
       return true;
     }

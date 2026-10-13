@@ -75,6 +75,8 @@ export interface OfficeDeps {
    * Ausente = mensagens pelo escritório desligadas (OfficeSnapshot.meta.messages).
    */
   messages?: () => ReadonlySet<string>;
+  /** Capacidades da ferramenta, resolvidas pelo RuntimeSet antes de publicar cada agente real. */
+  capabilities?: (a: AgentInfo) => { stop: boolean; takeover: boolean };
   /** Verificação de versão nova no GitHub (ver OfficeSnapshot.meta.updates). */
   updates?: () => UpdateStatus;
   /** Terminais interativos (PtyManager): estado do recurso e os abertos. */
@@ -1000,6 +1002,13 @@ export class Office {
     }
     const perms = this.deps.permissions?.();
     const real = [...this.agents.values()].map((r) => applyPermission(cloneAgent(r.info), perms?.get(r.info.id)));
+    for (const a of real) {
+      const caps = this.deps.capabilities?.(a);
+      if (caps) {
+        a.canStop = caps.stop;
+        a.canTakeover = caps.takeover;
+      }
+    }
     const reach = this.deps.messages?.();
     // Mensagens pelo escritório: principais presentes cuja sessão está com o plugin conectado. No demo quem decide é
     // o simulador; com o recurso desligado, ninguém recebe.

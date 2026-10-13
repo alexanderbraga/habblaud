@@ -657,12 +657,18 @@ seulement : Codex n'indique pas le coût). La pastille du compte Codex est évid
   réponse dans la carte **Demande la permission** jusqu'à **25 secondes** (`npm run codex:install -- --espera <s>`, de 5 à 120) :
   **Valider** ou **Refuser** (avec le motif). Contrairement à Claude Code, Codex n'affiche la validation dans le terminal
   **qu'après** la réponse du bureau ou la fin du délai — en attendant, le terminal affiche « En attente de réponse dans
-  Habblaud… ». Il n'y a ni « toujours autoriser » ni « interrompre », et Codex ne permet pas de répondre à ses questions
-  depuis l'extérieur.
-- **Envoyer des messages :** la zone **Envoyer un message** fonctionne aussi pour Codex, via `codex queue` : le message
-  entre dans la file de la session et Codex le prend quand il a fini ce qu'il est en train de faire (jusqu'à une dizaine
-  de secondes plus tard). En mode Node, Habblaud lance lui-même la commande ; **dans Docker**, laissez tourner
-  `npm run codex:bridge` sur le Mac (le conteneur ne voit pas votre Codex).
+  Habblaud… ». Les validations des hooks n'ont ni « toujours autoriser » ni « interrompre ».
+- **Prendre le contrôle ici, Fermer et Nouvel agent** fonctionnent aussi pour Codex. Les sessions ouvertes ou reprises
+  par Habblaud tournent en **always-approve** (`approvalPolicy: "never"`, `sandbox: "danger-full-access"`) dans
+  `codex app-server`. La reprise ferme la TUI locale vérifiée et reprend la même conversation ; la fermeture conserve
+  la conversation enregistrée. **Dans Docker**, laissez tourner `npm run codex:bridge` sur le Mac : l'auxiliaire de
+  l'hôte y exécute ces actions.
+- **Répondre aux questions :** les questions des sessions Codex ouvertes ou reprises par Habblaud reçoivent leur
+  réponse dans le bureau. Sans page ouverte ou sans réponse dans le délai imparti, la question est annulée.
+- **Envoyer des messages :** la zone **Envoyer un message** utilise l'app-server pour les sessions hébergées par
+  Habblaud, même pendant un tour actif. Les sessions de la TUI seulement observées utilisent toujours `codex queue`,
+  qui transmet après le travail en cours (jusqu'à une dizaine de secondes plus tard). En mode Node, Habblaud lance
+  Codex ; dans Docker, l'auxiliaire transmet les messages.
 - **Utilisation sur 5 heures et sur la semaine :** elle provient des fichiers de Codex eux-mêmes et ne se met à jour que
   pendant qu'une session tourne ; la carte affiche l'âge des chiffres et « sans quota » quand l'espace de travail n'a
   plus de crédits.

@@ -232,6 +232,21 @@ describe('PermissionRegistry: decisões e esperas do hook', () => {
 });
 
 describe('PermissionRegistry: perguntas (AskUserQuestion)', () => {
+  it('pergunta do Codex pelo app-server aceita resposta por posição', async () => {
+    const { office, registry } = setup();
+    const thread = '01a13637-1830-76f2-8819-4cbd073f98a4';
+    const agentId = `.codex:${thread}`;
+    office.addMain({ id: agentId, provider: 'codex', account: '.codex', sessionId: thread, cwd: '/p/loja', role: 'Agente principal', startedAt: 0, status: 'working' });
+    const id = registered(registry.register(askInput({
+      provider: 'codex', account: '.codex', session_id: thread,
+      tool_input: { questions: [{ question: 'Qual banco?', options: [{ label: 'Postgres' }, { label: 'SQLite' }] }] },
+    })));
+    expect(snapAgent(office, agentId)).toMatchObject({ status: 'waiting', waitingFor: 'responder uma pergunta', permission: { provider: 'codex', questions: [{ index: 0, question: 'Qual banco?' }] } });
+    const w = registry.wait(id, 25_000)!;
+    expect(registry.decide(id, { behavior: 'answer', answers: [{ question: 0, options: [1] }] })).toBe('ok');
+    await expect(w.result).resolves.toEqual({ status: 'decided', behavior: 'answer', answers: [{ question: 0, options: [1] }] } satisfies WaitResult);
+  });
+
   it('publica as perguntas com as posições do original (mascaradas): espera "responder uma pergunta"; feed e aviso de pergunta', () => {
     const { office, registry } = setup();
     office.commit();

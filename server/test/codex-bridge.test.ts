@@ -2,11 +2,15 @@
 // /api/codex/bridge/*): a trava das mensagens (recurso ligado + Host local), a rodada completa página → auxiliar →
 // codex queue (binário falso) → confirmação, e a conferência de cada mensagem antes de rodar o comando.
 import http from 'node:http';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkMessage, dictationRound, filesRound, httpPost, parseArgs, round, spawnRound, type Post } from '../../scripts/codex-bridge';
+import { checkMessage, createHostPermissions, dictationRound, filesRound, httpPost, parseArgs, round, runtimeRound, spawnRound, type Post } from '../../scripts/codex-bridge';
+import type { AgentInfo } from '../../shared/types';
+import { HostQueue } from '../runtime/host-queue';
+import { CodexRuntime } from '../runtime/codex';
+import { CodexAppServer } from '../runtime/protocol/codex-app';
 import { spawnUrl } from '../spawn/spawn';
 import { AccountsService } from '../accounts/service';
 import { createApiHandler } from '../http/app';
@@ -18,6 +22,7 @@ import { createMessageRoutes } from '../messages/http';
 import { MessageRegistry } from '../messages/registry';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
+import { FAKE_CODEX_APP_RUNS, writeFakeCodexApp } from './fake-codex-app';
 import { FAKE_CODEX_RUNS, fakeCodexCalls, writeFakeCodex } from './fake-codex';
 import { tempDir } from './fixtures';
 import { request } from './permission-server';
@@ -42,7 +47,7 @@ afterEach(async () => {
 });
 
 /** Office + Hub + rotas de verdade, com um agente do Codex e o registro das mensagens SEM o modo Node (como no Docker). */
-async function serve(enabled = true): Promise<{ base: string; port: number; office: Office; registry?: MessageRegistry }> {
+async function serve(enabled = true, hostRuntime?: HostQueue): Promise<{ base: string; port: number; office: Office; registry?: MessageRegistry }> {
   const late: { registry?: MessageRegistry } = {};
   const office = new Office({
     names: new NameStore(null),
@@ -59,7 +64,7 @@ async function serve(enabled = true): Promise<{ base: string; port: number; offi
   late.registry = registry;
   registry?.start();
   const accounts = new AccountsService({ dirs: [], home: tmp.dir, env: {}, onChange: () => {} });
-  const api = createApiHandler({ office, hub, accounts, sources: () => [], version: 't', inDocker: true, terminal: true, messages: registry ? createMessageRoutes(registry) : undefined });
+  const api = createApiHandler({ office, hub, accounts, sources: () => [], version: 't', inDocker: true, terminal: true, messages: registry ? createMessageRoutes(registry) : undefined, hostRuntime });
   const guard = createRequestGuard({ allowedHosts: new Set(['habblaud.lan']) });
   const server = http.createServer((req, res) => {
     if (guard(req, res)) return;
@@ -278,5 +283,134 @@ describe('spawnRound (agentes novos pelo auxiliar)', () => {
   it('Habblaud fora do ar ou recusando', async () => {
     expect(await spawnRound(async () => null, async () => ({ ok: true }))).toEqual({ state: 'down' });
     expect(await spawnRound(async () => ({ status: 403, json: { error: 'x' } }), async () => ({ ok: true }))).toEqual({ state: 'refused', status: 403 });
+  });
+});
+
+describe('rotas do auxiliar do host: runtime', () => {
+  it('POST poll devolve a ação submetida; POST ack resolve a promessa; sem hostRuntime, 404', async () => {
+    const off = await serve();
+    expect((await request(off.base, '/api/host/runtime/poll', { method: 'POST', body: {} })).status).toBe(404);
+    expect((await request(off.base, '/api/host/runtime/ack', { method: 'POST', body: {} })).status).toBe(404);
+    await close!();
+
+    const queue = new HostQueue({ timeoutMs: 5_000 });
+    const s = await serve(true, queue);
+    const pending = queue.submit({ op: 'takeover', account: '.codex', codexHome, thread: THREAD });
+    const polled = await request(s.base, '/api/host/runtime/poll', { method: 'POST', body: {} });
+    expect(polled).toMatchObject({ status: 200 });
+    const actions = (polled.json as { actions: Array<{ id: string; op: string; thread: string }> }).actions;
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({ op: 'takeover', thread: THREAD, account: '.codex', codexHome });
+    const acked = await request(s.base, '/api/host/runtime/ack', { method: 'POST', body: { results: [{ id: actions[0].id, ok: true, hosted: [THREAD] }] } });
+    expect(acked.status).toBe(204);
+    await expect(pending).resolves.toMatchObject({ ok: true });
+    expect(queue.hosted(codexHome, THREAD)).toBe(true);
+  });
+});
+
+describe('runtimeRound', () => {
+  const stopApps: Array<() => void> = [];
+  afterEach(() => {
+    for (const stop of stopApps.splice(0)) stop();
+  });
+
+  it('Habblaud fora do ar ou recusando: a rodada só informa', async () => {
+    const rt = {} as CodexRuntime;
+    expect(await runtimeRound(async () => null, rt, () => [])).toEqual({ state: 'down' });
+    expect(await runtimeRound(async () => ({ status: 404, json: {} }), rt, () => [])).toEqual({ state: 'refused', status: 404 });
+  });
+
+  it.runIf(FAKE_CODEX_APP_RUNS)('takeover de um thread sem TUI resolve ok com hosted; o send seguinte vai por turn/start', async () => {
+    const queue = new HostQueue({ timeoutMs: 10_000 });
+    const s = await serve(true, queue);
+    const bin = writeFakeCodexApp(tmp.dir);
+    const log = join(tmp.dir, 'app-calls.jsonl');
+    const apps = new Map<string, CodexAppServer>();
+    stopApps.push(() => {
+      for (const app of apps.values()) app.stop();
+    });
+    const rt = new CodexRuntime({
+      homeOf: (account) => (account === '.codex' ? codexHome : undefined),
+      agent: (id) => {
+        const sep = id.indexOf(':');
+        if (sep <= 0) return undefined;
+        const account = id.slice(0, sep);
+        const thread = id.slice(sep + 1);
+        if (account !== '.codex' || !thread) return undefined;
+        return { id, kind: 'main', provider: 'codex', account, sessionId: thread, roomId: '/p/loja' } as AgentInfo;
+      },
+      accounts: () => ['.codex'],
+      app: (home) => {
+        let app = apps.get(home);
+        if (!app) {
+          app = new CodexAppServer({
+            bin,
+            codexHome: home,
+            env: { ...process.env, FAKE_CODEX_APP_LOG: log },
+            onAgentRequest: async () => ({ kind: 'approval', allow: false }),
+            requestTimeoutMs: 2_000,
+          });
+          apps.set(home, app);
+        }
+        return app;
+      },
+      tui: { find: async () => undefined, stop: async () => 'gone' },
+      agentIdOf: (acc, thread) => `${acc}:${thread}`,
+    });
+    const post = httpPost(s.port);
+    const hostedOf = (home: string) => apps.get(home)?.threads() ?? [];
+    const lines: string[] = [];
+    const pending = queue.submit({ op: 'takeover', account: '.codex', codexHome, thread: THREAD });
+    const taken = await runtimeRound(post, rt, hostedOf, (l) => lines.push(l));
+    expect(taken).toMatchObject({ state: 'ok', results: [{ ok: true, hosted: [THREAD] }] });
+    await expect(pending).resolves.toMatchObject({ ok: true });
+
+    const text = 'oi pelo escritório';
+    const sent = queue.submit({ op: 'send', account: '.codex', codexHome, thread: THREAD, text });
+    const delivered = await runtimeRound(post, rt, hostedOf, (l) => lines.push(l));
+    expect(delivered).toMatchObject({ state: 'ok', results: [{ ok: true, hosted: [THREAD] }] });
+    await expect(sent).resolves.toMatchObject({ ok: true });
+    const calls = readFileSync(log, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { method?: string; params?: { threadId?: string; input?: Array<{ text?: string }> } });
+    expect(calls.find((c) => c.method === 'turn/start')?.params).toMatchObject({ threadId: THREAD, input: [{ type: 'text', text }] });
+    expect(lines.join('\n')).not.toContain(text);
+  });
+});
+
+describe('permissions do auxiliar', () => {
+  it('POST /api/permissions com o corpo do hook e espera em GET /api/permissions/:id/wait', async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown; timeoutMs?: number }> = [];
+    const post: Post = async (path, body) => {
+      calls.push({ method: 'POST', path, body });
+      return { status: 201, json: { id: 'p1', expiresAt: Date.now() + 1_000 } };
+    };
+    const get = async (path: string, timeoutMs: number) => {
+      calls.push({ method: 'GET', path, timeoutMs });
+      return { status: 200, json: { status: 'decided', behavior: 'allow' } };
+    };
+    const perms = createHostPermissions(post, get, (account) => (account === '.codex' ? '/h/.codex' : undefined));
+    expect(perms.register({})).toEqual({ skip: 'invalid' });
+    const raw = { provider: 'codex', account: '.codex', session_id: THREAD, tool_name: 'Bash', tool_input: { command: 'ls' }, cwd: '/p', timeout_ms: 30_000 };
+    const reg = perms.register(raw);
+    expect(reg).toMatchObject({ id: expect.any(String) });
+    if (!('id' in reg)) return;
+    await expect(perms.wait(reg.id, 5_000)?.result).resolves.toEqual({ status: 'decided', behavior: 'allow' });
+    expect(calls[0]).toEqual({
+      method: 'POST',
+      path: '/api/permissions',
+      body: {
+        provider: 'codex',
+        account: '.codex',
+        codexHome: '/h/.codex',
+        session_id: THREAD,
+        tool_name: 'Bash',
+        tool_input: { command: 'ls' },
+        cwd: '/p',
+        timeout_ms: 30_000,
+      },
+    });
+    expect(calls[1]).toEqual({ method: 'GET', path: '/api/permissions/p1/wait?timeout=5', timeoutMs: 10_000 });
   });
 });

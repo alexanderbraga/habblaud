@@ -626,11 +626,16 @@ chip da conta do Codex é vazado e leva o selo **CODEX**.
   resposta no cartão **Pede permissão** por até **25 segundos** (`npm run codex:install -- --espera <s>`, de 5 a 120):
   **Aprovar** ou **Recusar** (com o motivo). Diferente do Claude Code, o Codex só mostra a aprovação no terminal
   **depois** que o escritório responde ou o prazo acaba — nesse meio-tempo o terminal mostra "Aguardando resposta no
-  Habblaud…". Não há "sempre permitir" nem "interromper", e o Codex não deixa responder as perguntas dele por fora.
-- **Mandar mensagens:** a caixa **Mandar mensagem** funciona para o Codex também, pelo `codex queue`: a mensagem entra
-  na fila da sessão e o Codex a pega quando termina o que está fazendo (até uns 10 segundos depois). No modo Node o
-  próprio Habblaud roda o comando; **no Docker**, deixe `npm run codex:bridge` rodando no Mac (o container não
-  enxerga o seu Codex).
+  Habblaud…". As aprovações dos hooks não têm "sempre permitir" nem "interromper".
+- **Assumir daqui, Encerrar e Novo agente** também valem para o Codex. As sessões que o Habblaud abre ou assume rodam
+  em **always-approve** (`approvalPolicy: "never"`, `sandbox: "danger-full-access"`), no `codex app-server`.
+  Assumir encerra o TUI local conferido e retoma a mesma conversa; encerrar mantém a conversa salva.
+  **No Docker**, deixe `npm run codex:bridge` rodando no Mac: o auxiliar do host executa essas ações lá.
+- **Responder às perguntas:** as perguntas das sessões do Codex abertas ou assumidas pelo Habblaud são respondidas
+  no escritório. Sem página aberta ou sem resposta dentro do prazo, a pergunta é cancelada.
+- **Mandar mensagens:** a caixa **Mandar mensagem** usa o app-server nas sessões hospedadas pelo Habblaud, inclusive
+  durante um turno em andamento. Sessões do TUI só observadas continuam pelo `codex queue`, que entrega quando o
+  trabalho atual acaba (até uns 10 segundos depois). No modo Node o Habblaud roda o Codex; no Docker, o auxiliar entrega.
 - **Uso de 5 horas e semanal:** vem dos próprios arquivos do Codex e só se renova enquanto alguma sessão roda; o cartão
   mostra a idade dos números e "sem cota" quando o workspace ficou sem créditos.
 - **Quando a sessão entra:** com a primeira mensagem (é quando o Codex grava a pasta do projeto); uma CLI aberta e

@@ -658,12 +658,18 @@ chip de la cuenta de Codex es hueco y lleva el sello **CODEX**.
   respuesta en la tarjeta **Pide permiso** hasta **25 segundos** (`npm run codex:install -- --espera <s>`, de 5 a 120):
   **Aprobar** o **Rechazar** (con el motivo). A diferencia de Claude Code, Codex solo muestra la aprobación en la
   terminal **después** de que la oficina responde o se acaba el plazo; mientras tanto, la terminal muestra "Esperando
-  respuesta en Habblaud…". No hay "permitir siempre" ni "interrumpir", y Codex no deja responder sus preguntas desde
-  fuera.
-- **Enviar mensajes:** el cuadro **Enviar mensaje** también funciona con Codex, a través de `codex queue`: el mensaje
-  entra en la cola de la sesión y Codex lo toma cuando termina lo que está haciendo (hasta unos 10 segundos después). En
-  modo Node, el propio Habblaud ejecuta el comando; **en Docker**, deja `npm run codex:bridge` en ejecución en el Mac
-  (el contenedor no ve tu Codex).
+  respuesta en Habblaud…". Las aprobaciones de los hooks no tienen "permitir siempre" ni "interrumpir".
+- **Tomar el control aquí, Cerrar y Nuevo agente** también funcionan con Codex. Las sesiones que Habblaud abre o
+  asume se ejecutan en **always-approve** (`approvalPolicy: "never"`, `sandbox: "danger-full-access"`) en
+  `codex app-server`. Tomar el control cierra la TUI local verificada y retoma la misma conversación; cerrarla conserva
+  la conversación guardada. **En Docker**, deja `npm run codex:bridge` en ejecución en el Mac: el auxiliar del host
+  ejecuta esas acciones allí.
+- **Responder preguntas:** las preguntas de las sesiones de Codex abiertas o asumidas por Habblaud se responden
+  desde la oficina. Sin una página abierta o sin respuesta dentro del plazo, la pregunta se cancela.
+- **Enviar mensajes:** el cuadro **Enviar mensaje** usa el app-server para las sesiones alojadas por Habblaud,
+  incluso durante un turno activo. Las sesiones de la TUI solo observadas siguen usando `codex queue`, que entrega
+  cuando termina el trabajo actual (hasta unos 10 segundos después). En modo Node Habblaud ejecuta Codex; en Docker,
+  el auxiliar entrega los mensajes.
 - **Uso de 5 horas y semanal:** viene de los propios archivos de Codex y solo se renueva mientras alguna sesión está en
   ejecución; la tarjeta muestra la antigüedad de los números y "sin cuota" cuando el workspace se quedó sin créditos.
 - **Cuándo entra la sesión:** con el primer mensaje (que es cuando Codex guarda la carpeta del proyecto); una CLI

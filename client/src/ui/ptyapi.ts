@@ -1,15 +1,14 @@
 // Chamadas à API do terminal interativo (server/http/pty.ts). Erros viram Error com a mensagem do servidor.
 import { isDemoId } from '../../../shared/timeline';
 import type { AgentInfo, PtyInfo } from '../../../shared/types';
-import { providerOf } from './provider';
 import { tr } from '../../../shared/i18n';
 
 /**
- * Dá para encerrar ou assumir este agente pelo escritório? Só o agente principal de uma sessão do Claude Code: o
- * Codex não tem registro de sessões nem `--resume` aqui, e os agentes do demo não existem de verdade.
+ * Dá para encerrar ou assumir este agente pelo escritório? O servidor informa as capacidades por ferramenta;
+ * subagentes e agentes do demo não têm uma sessão própria para controlar.
  */
-export function ptyControllable(a: Pick<AgentInfo, 'id' | 'kind' | 'provider'> | null | undefined): boolean {
-  return !!a && a.kind === 'main' && providerOf(a) === 'claude' && !isDemoId(a.id);
+export function ptyControllable(a: Pick<AgentInfo, 'id' | 'kind' | 'provider' | 'canTakeover' | 'canStop'> | null | undefined): boolean {
+  return !!a && a.kind === 'main' && !isDemoId(a.id) && (a.canTakeover === true || a.canStop === true);
 }
 
 export async function postPty<T = unknown>(url: string, body: unknown): Promise<T | undefined> {
@@ -33,8 +32,8 @@ export function createPty(cwd: string, account?: string): Promise<PtyInfo | unde
 }
 
 /** Encerra a sessão noutro terminal e continua a mesma conversa aqui. */
-export function takeoverAgent(agentId: string): Promise<PtyInfo | undefined> {
-  return postPty<PtyInfo>(`/api/agents/${encodeURIComponent(agentId)}/takeover`, SIZE);
+export function takeoverAgent(agentId: string): Promise<PtyInfo | { kind: 'hosted'; agentId: string } | undefined> {
+  return postPty<PtyInfo | { kind: 'hosted'; agentId: string }>(`/api/agents/${encodeURIComponent(agentId)}/takeover`, SIZE);
 }
 
 /** Encerra o agente (aqui ou noutro terminal). */

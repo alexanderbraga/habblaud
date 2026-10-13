@@ -694,7 +694,7 @@ class AgentView {
     const router = this.ctx.terminals;
     const available = (router ? router.available : !!this.ctx.store.snapshot?.meta.terminal) && access().terminal;
     const open = (router ? router.openAgentId : this.terminal.agentId) === this.id;
-    // Interativo: o Claude Code roda aqui (pty) ou roda noutro terminal e dá para assumir pela janela.
+    // O runtime informa se dá para assumir; a janela interativa depende de haver um pty aqui.
     const readOnly = !!this.ctx.store.snapshot?.meta.terminal;
     const kind = !this.id ? '' : router?.interactive(this.id) ? 'interativo' : !readOnly && this.pty.enabled && ptyControllable(this.last) ? 'em outro terminal' : 'ao vivo';
     setText(this.termRo, kind === 'interativo' ? tr('interativo') : kind === 'ao vivo' ? tr('ao vivo') : kind ? tr('em outro terminal') : '');
@@ -721,7 +721,7 @@ class AgentView {
             : kind === 'ao vivo'
               ? tr('Ver a conversa desta sessão como no {0}, ao vivo{1} (T)', [
                   provider === 'claude' ? tr('terminal do Claude Code') : PROVIDER_NAME[provider],
-                  this.pty.enabled && ptyControllable(this.last) ? tr('; "Assumir daqui" continua nela aqui') : '',
+                  this.last?.canTakeover && ptyControllable(this.last) ? tr('; "Assumir daqui" continua nela aqui') : '',
                 ])
               : kind === 'interativo'
                 ? tr('Abrir o terminal desta sessão, que roda aqui no Habblaud (T)')
@@ -898,7 +898,7 @@ class RoomView {
     const r = this.last;
     if (!r) return;
     // Só conta do Claude Code (nem Codex nem demo); sem nenhuma na sala, o servidor usa a padrão.
-    const account = (this.ctx.store.snapshot?.agents ?? []).find((a) => a.roomId === r.id && ptyControllable(a))?.account;
+    const account = (this.ctx.store.snapshot?.agents ?? []).find((a) => a.roomId === r.id && providerOf(a) === 'claude' && ptyControllable(a))?.account;
     setHidden(this.newMsg, true);
     this.pty.newSession(r.path, account).catch((err: Error) => {
       setText(this.newMsg, tr('Não deu: {0}', [err.message]));

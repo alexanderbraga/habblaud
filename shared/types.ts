@@ -185,6 +185,10 @@ export interface AgentInfo {
    * e perguntou pela caixa de entrada há pouco. Ver POST /api/messages.
    */
   canMessage?: boolean;
+  /** Dá para encerrar este agente pelo runtime da ferramenta no Habblaud. */
+  canStop?: boolean;
+  /** Dá para assumir esta sessão pelo runtime da ferramenta no Habblaud. */
+  canTakeover?: boolean;
 }
 
 export interface RoomInfo {

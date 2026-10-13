@@ -1,7 +1,8 @@
 // Pedidos de aprovação do Codex no registro de permissões: o agente pelo thread (agent_id ?? session_id) entre os
-// agentes do Codex (a conta só desempata), sem sugestões nem perguntas, recusa só com motivo (interromper e "sempre
-// permitir" = unsupported), sem a busca da resposta no transcript, waitingFor "aprovar um comando", e os títulos pelos
-// nomes do Codex (Bash, acesso à rede, apply_patch, request_permissions, mcp__…, write_stdin). Dados sintéticos.
+// agentes do Codex (a conta só desempata), sem sugestões, perguntas do app-server, recusa só com motivo (interromper
+// e "sempre permitir" = unsupported), sem a busca da resposta no transcript, waitingFor "aprovar um comando", e os
+// títulos pelos nomes do Codex (Bash, acesso à rede, apply_patch, request_permissions, mcp__…, write_stdin).
+// Dados sintéticos.
 import { describe, expect, it } from 'vitest';
 import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
@@ -122,11 +123,12 @@ describe('PermissionRegistry: pedidos do Codex', () => {
     expect(await w2.result).toEqual({ status: 'released', reason: 'terminal' });
   });
 
-  it('AskUserQuestion vindo do Codex não é pergunta: aprova-se como os outros pedidos', () => {
+  it('AskUserQuestion vindo do Codex é pergunta: exige resposta em vez de aprovação', () => {
     const { registry } = setup();
     const id = registered(registry.register(codexInput({ tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: 'Qual?', options: [{ label: 'A' }] }] } })));
-    expect(registry.detail(id)!.questions).toBeUndefined();
-    expect(registry.decide(id, { behavior: 'allow' })).toBe('ok');
+    expect(registry.detail(id)!.questions).toEqual([{ index: 0, question: 'Qual?', options: [{ index: 0, label: 'A' }] }]);
+    expect(registry.decide(id, { behavior: 'allow' })).toBe('invalid-answer');
+    expect(registry.decide(id, { behavior: 'answer', answers: [{ question: 0, options: [0] }] })).toBe('ok');
   });
 
   it('sem a busca da resposta no terminal: o transcript nunca é lido e o principal que deixa de esperar não libera o pedido', () => {

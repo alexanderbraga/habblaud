@@ -52,6 +52,11 @@ import { DictationService } from './dictation/dictation';
 import { createWhisperTranscriber, findWhisper } from './dictation/whisper';
 import { DeliveryIndex } from './deliveries/deliveries';
 import { FileFetcher } from './deliveries/fetcher';
+import { createClaudeRuntime } from './runtime/claude';
+import { CodexRuntime, type CodexAppServerLike } from './runtime/codex';
+import { CodexAppServer } from './runtime/protocol/codex-app';
+import { hostAppServer, HostQueue } from './runtime/host-queue';
+import { RuntimeSet } from './runtime/runtime';
 
 const config = loadConfig();
 const startedAt = Date.now();
@@ -73,7 +78,7 @@ const roomAliases = new RoomAliases(join(config.dataDir, 'rooms.json'));
 roomAliases.load();
 
 // Office, contas e fontes de agentes se referenciam (avisos de mudança / fontes): ligação tardia.
-const late: { office?: Office; agents?: SourceSet; permissions?: PermissionRegistry; messages?: MessageRegistry; ptys?: PtyManager; ptyOff?: string } = {};
+const late: { office?: Office; agents?: SourceSet; permissions?: PermissionRegistry; messages?: MessageRegistry; ptys?: PtyManager; ptyOff?: string; runtimes?: RuntimeSet } = {};
 // Versão nova: consulta a release mais recente no GitHub a cada 6 h (HABBLAUD_UPDATE_CHECK=0 desliga).
 const updates = new UpdateChecker({
   current: config.version,
@@ -104,6 +109,7 @@ const office = new Office({
   terminal: config.terminal,
   permissions: () => late.permissions?.snapshot() ?? new Map(),
   messages: config.messages ? () => late.messages?.reachable() ?? new Set() : undefined,
+  capabilities: (a) => late.runtimes?.capabilities(a) ?? { stop: false, takeover: false },
   ptys: () => (late.ptys ? { status: late.ptys.status(), list: late.ptys.list() } : { status: { enabled: false, reason: late.ptyOff ?? tr('desligado') }, list: [] }),
   updates: () => updates.status(),
 });
@@ -213,9 +219,9 @@ const permissions = config.terminal
   : undefined;
 late.permissions = permissions;
 // Mensagens pelo escritório (plugin habblaud-mensagens): entram na sessão como se você as tivesse digitado, então
-// seguem a mesma trava (e HABBLAUD_MENSAGENS=0 desliga só elas). Ao Codex vão por `codex queue` (messages/codex.ts):
-// fora do Docker o próprio servidor roda o comando (HABBLAUD_CODEX_BIN ou `codex` do PATH); no Docker, o auxiliar do
-// host (npm run codex:bridge).
+// seguem a mesma trava (e HABBLAUD_MENSAGENS=0 desliga só elas). Ao Codex vão pelo runtime: app-server para as sessões
+// hospedadas, `codex queue` para as observadas. Fora do Docker o servidor roda o Codex (HABBLAUD_CODEX_BIN ou `codex`
+// do PATH); no Docker, o auxiliar do host (npm run codex:bridge).
 const codexBin = config.messages && !config.inDocker ? findCodexBin(process.env) : undefined;
 // Terminal interativo e Novo agente: os dois rodam o Claude Code neste computador, então pedem a mesma liberação,
 // HABBLAUD_PTY=1 (aceita os mesmos valores do HABBLAUD_TERMINAL).
@@ -234,19 +240,6 @@ const whisper = config.messages && !config.inDocker ? findWhisper() : undefined;
 const dictation = config.messages
   ? new DictationService(whisper && !('missing' in whisper) ? { transcriber: createWhisperTranscriber(whisper) } : {})
   : undefined;
-const messages = config.messages
-  ? new MessageRegistry({
-      office,
-      demoAgent: (id) => office.demoAgent(id),
-      demoDeliver: (id, text) => office.deliverDemoMessage(id, text),
-      codex: {
-        run: codexBin ? createCodexQueueRunner(codexBin) : undefined,
-        homeOf: (account) => accounts.entriesOf('codex').find((e) => e.id === account)?.detected.configDir,
-      },
-    })
-  : undefined;
-late.messages = messages;
-
 // Terminal interativo (abrir/assumir sessões e encerrar agentes): opt-in com HABBLAUD_PTY=1, só com bind local, fora
 // do Docker, com node-pty e o executável do claude no PATH.
 const claudeBinSetting = process.env.HABBLAUD_CLAUDE_BIN?.trim();
@@ -285,6 +278,47 @@ const ptys = spawnPty
   : undefined;
 late.ptys = ptys;
 late.ptyOff = ptyOff;
+
+// Um runtime por ferramenta. No Docker, o auxiliar roda o Codex e confere o TUI no computador do usuário.
+const hostRuntime = config.inDocker && codex ? new HostQueue() : undefined;
+const codexHomeOf = (account: string) => accounts.entriesOf('codex').find((e) => e.id === account)?.detected.configDir;
+const codexApps = new Map<string, CodexAppServer | CodexAppServerLike>();
+const codexRuntime: CodexRuntime | undefined = config.terminal && codex && (codexBin || hostRuntime)
+  ? new CodexRuntime({
+      homeOf: codexHomeOf,
+      agent: (id) => office.get(id),
+      cwdOf: (a) => office.roomPath(a.roomId),
+      accounts: () => accounts.entriesOf('codex').map((e) => e.id),
+      app: (home) => {
+        let app = codexApps.get(home);
+        if (!app) {
+          const account = () => accounts.entriesOf('codex').find((e) => e.detected.configDir === home)?.id ?? '';
+          app = hostRuntime
+            ? hostAppServer(hostRuntime, account, home)
+            : new CodexAppServer({ bin: codexBin!, codexHome: home, onAgentRequest: (r) => codexRuntime!.onAgentRequest(account(), r), onClosed: () => office.markDirty() });
+          codexApps.set(home, app);
+        }
+        return app;
+      },
+      queue: codexBin ? createCodexQueueRunner(codexBin) : undefined,
+      permissions,
+      delegate: !!hostRuntime,
+      agentIdOf: (account, thread) => `${account}:${thread}`,
+    })
+  : undefined;
+const runtimes = new RuntimeSet([createClaudeRuntime({ ptys, spawn }), ...(codexRuntime ? [codexRuntime] : [])], {
+  agent: (id) => office.get(id), inScope, cwdOf: (a) => office.roomPath(a.roomId),
+});
+late.runtimes = runtimes;
+const messages = config.messages
+  ? new MessageRegistry({
+      office,
+      demoAgent: (id) => office.demoAgent(id),
+      demoDeliver: (id, text) => office.deliverDemoMessage(id, text),
+      codex: { run: codexRuntime ? codexRuntime.deliver : codexBin ? createCodexQueueRunner(codexBin) : undefined, homeOf: codexHomeOf },
+    })
+  : undefined;
+late.messages = messages;
 
 if (config.demo) office.setDemo(true);
 // As fontes síncronas (a do Claude Code) terminam o boot aqui, antes de o hub começar a transmitir.
@@ -327,7 +361,9 @@ const api = createApiHandler({
   timeline: createTimelineHandler({ dir: timelineDir, recording: !!timeline }),
   permissions: permissions ? createPermissionRoutes(permissions) : undefined,
   messages: messages ? createMessageRoutes(messages) : undefined,
-  pty: ptys ? createPtyRoutes(ptys) : undefined,
+  pty: config.terminal ? createPtyRoutes(ptys, runtimes, { inDocker: config.inDocker, onChange: () => office.markDirty() }) : undefined,
+  runtimes,
+  hostRuntime,
   spawn,
   attachments,
   dictation,
@@ -510,6 +546,7 @@ function shutdown(signal: string): void {
   permissions?.stop();
   messages?.stop();
   ptys?.stopAll();
+  for (const app of codexApps.values()) if ('stop' in app) app.stop();
   updates.stop();
   names.flush();
   void closeVite?.();

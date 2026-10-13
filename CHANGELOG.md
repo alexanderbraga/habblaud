@@ -12,6 +12,10 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- **Codex: Assumir daqui, Encerrar e Novo agente** pelo runtime comum do escritório, com filtro por pasta e
+  capacidades no snapshot. Sessões abertas ou assumidas rodam em always-approve no `codex app-server`; mensagens
+  chegam pelo app-server e as perguntas são respondidas no escritório. No Docker, o `npm run codex:bridge` executa
+  as ações no host, incluindo a conferência e o encerramento do TUI.
 - `HABBLAUD_PROJECT_ROOTS`: o escritório mostra só as sessões abertas nas pastas escolhidas (ex.: a de uma empresa ou cliente).
   O histórico do terminal, as permissões e os terminais abertos seguem o mesmo filtro, e uma sessão que passa a mexer
   em outra pasta sai do escritório. Nomes, timelapse e Meu dia ficam numa pasta própria de cada escopo. No Docker, o
