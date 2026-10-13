@@ -1120,13 +1120,16 @@
   display: none;
 }
 
-/* Consumo (Grok): sem limite, então sem barra; o custo fica na coluna do percentual. */
+/* Consumo (Grok): sem limite, então sem barra; o custo ocupa as colunas da barra e do percentual. */
 .ui-meter.is-spend .ui-meter__bar {
-  visibility: hidden;
+  display: none;
 }
 
 .ui-meter.is-spend .ui-meter__pct {
-  color: var(--ui-text, #e6e9ef);
+  grid-column: 2 / span 2;
+  color: var(--ui-text);
+  text-align: left;
+  white-space: nowrap;
 }
 
 .ui-meter__pct {
