@@ -38,7 +38,7 @@ import type { AccountInfo, SourceInfo } from '../shared/types';
 import { codexDirsRefused, detectAccounts, discoverClaudeDirs, expandHome, splitList, type DetectedAccount } from '../server/accounts/detect';
 import { detectCodexAccounts, discoverCodexDirs } from '../server/sources/codex/accounts';
 import { describeStateMigration, LEGACY_NAME, legacyEnvWarning, migrateLegacyStateDir } from '../server/legacy';
-import { makeClaudeRunner, MIN_CLAUDE_VERSION, readPackageVersion, updateInstalledMods, type ModUpdateResult } from './mod-install';
+import { makeClaudeRunner, MIN_CLAUDE_VERSION, readPackageVersion, run as runModInstall, updateInstalledMods, type ModUpdateResult } from './mod-install';
 import { tr } from '../shared/i18n';
 import { readEnvValue } from '../server/remote/envfile';
 import { ensureServerCert, remoteTargets, remoteTlsBase, tlsPaths } from '../server/remote/tls';
@@ -78,7 +78,7 @@ const LEGACY_DOCKER = {
   image: `${LEGACY_NAME}:local`,
 } as const;
 
-const USAGE = tr('Uso: npm run docker:up [-- opções]\n\nOpções:\n  --no-build   sobe sem reconstruir a imagem\n  --down       derruba o container (o mesmo que npm run docker:down)\n  -h, --help   mostra esta ajuda\n\nVariáveis: HABBLAUD_PORT (porta no host, padrão {0}), HABBLAUD_CLAUDE_DIRS\n(config dirs separados por vírgula, se as contas não estiverem em ~/.claude*), HABBLAUD_CODEX_DIRS\n(pastas do Codex, se não estiverem em ~/.codex* nem em CODEX_HOME), HABBLAUD_CODEX=0 (sem o Codex) e\nHABBLAUD_PROJECT_ROOTS (só as sessões abertas nessas pastas, separadas por vírgula; ~ vale).\n\nUma instância por pasta (ex.: uma por empresa), lado a lado:\n  HABBLAUD_INSTANCE=empresa-a HABBLAUD_PORT=4801 HABBLAUD_PROJECT_ROOTS=~/Claude/empresa-a npm run docker:up\nabre em http://empresa-a.localhost:4801, com container, volume e override próprios; HABBLAUD_INSTANCE=empresa-a\nnpm run docker:down a derruba. Os hooks mandam cada sessão para a instância da pasta dela (~/.habblaud/instances.json).', [DEFAULT_PORT]);
+const USAGE = tr('Uso: npm run docker:up [-- opções]\n\nOpções:\n  --no-build   sobe sem reconstruir a imagem\n  --no-mod     não instala o mod do Habblaud nas contas do Claude Code que ainda não o têm\n  --down       derruba o container (o mesmo que npm run docker:down)\n  -h, --help   mostra esta ajuda\n\nVariáveis: HABBLAUD_PORT (porta no host, padrão {0}), HABBLAUD_CLAUDE_DIRS\n(config dirs separados por vírgula, se as contas não estiverem em ~/.claude*), HABBLAUD_CODEX_DIRS\n(pastas do Codex, se não estiverem em ~/.codex* nem em CODEX_HOME), HABBLAUD_CODEX=0 (sem o Codex) e\nHABBLAUD_PROJECT_ROOTS (só as sessões abertas nessas pastas, separadas por vírgula; ~ vale).\n\nUma instância por pasta (ex.: uma por empresa), lado a lado:\n  HABBLAUD_INSTANCE=empresa-a HABBLAUD_PORT=4801 HABBLAUD_PROJECT_ROOTS=~/Claude/empresa-a npm run docker:up\nabre em http://empresa-a.localhost:4801, com container, volume e override próprios; HABBLAUD_INSTANCE=empresa-a\nnpm run docker:down a derruba. Os hooks mandam cada sessão para a instância da pasta dela (~/.habblaud/instances.json).', [DEFAULT_PORT]);
 
 // ---------------------------------------------------------------------------------------------
 // Saída no terminal
@@ -111,13 +111,16 @@ export interface Options {
   down: boolean;
   build: boolean;
   help: boolean;
+  /** Instala o mod do Habblaud nas contas do Claude Code que ainda não o têm (false com --no-mod). */
+  mod: boolean;
 }
 
 export function parseArgs(argv: string[]): Options {
-  const opts: Options = { down: false, build: true, help: false };
+  const opts: Options = { down: false, build: true, help: false, mod: true };
   for (const arg of argv) {
     if (arg === '--down') opts.down = true;
     else if (arg === '--no-build') opts.build = false;
+    else if (arg === '--no-mod') opts.mod = false;
     else if (arg === '-h' || arg === '--help') opts.help = true;
     else fail(tr('opção desconhecida: {0}\n\n{1}', [arg, USAGE]));
   }
@@ -885,7 +888,9 @@ async function up(opts: Options, port: number): Promise<void> {
     const state = src.ok ? plural(src.sessions, tr('sessão aberta'), tr('sessões abertas')) : tr('erro ao ler ({0})', [src.error ?? tr('desconhecido')]);
     say(`  Codex ${m.account.short} (${m.account.id}): ${state}${usage ? ` · ${USAGE_STATUS[usage]}` : ''}`);
   }
-  for (const line of modHint(updateMods(dirs, accounts))) say(line);
+  const mod = updateMods(dirs, accounts);
+  if (opts.mod && mod.missing.length) await installMods(mod.missing);
+  else for (const line of modHint(mod)) say(line);
   // Com a cópia falha, os dados só existem no volume antigo: nada de sugerir apagá-lo.
   if (plan.cleanup.length && !copyFailed) say(tr('  Sobrou do CodeTown; depois de conferir o escritório, apague com: {0}', [plan.cleanup.join(' · ')]));
   if (names.instance) say(tr('  Logs: docker logs -f {0} · Parar: HABBLAUD_INSTANCE={1} npm run docker:down', [names.container, names.instance]));
@@ -976,7 +981,19 @@ function statOk(path: string): boolean {
 }
 
 /** Atualiza o mod de quem já instalou (ver mod-install.ts). Nada aqui derruba o docker:up. */
-function updateMods(dirs: string[], accounts: DetectedAccount[]): Pick<ModUpdateResult, 'installed' | 'unavailable'> {
+/** Instala o mod (os três plugins) nas contas que ainda não o têm, pelo mesmo caminho do npm run mod:install. */
+async function installMods(dirs: string[]): Promise<void> {
+  say(tr('  Instalando o mod do Habblaud no Claude Code: uso de 5h/semanal ao vivo, responder e mandar mensagens pelo escritório (para pular: --no-mod).'));
+  try {
+    const opts = { command: 'install' as const, dryRun: false, permissions: true, messages: true, accounts: dirs };
+    const ctx = { env: process.env, home: HOME, now: new Date(), root: ROOT, version: readPackageVersion(ROOT), claude: makeClaudeRunner(), out: (l: string) => say(`    ${l}`) };
+    if ((await runModInstall(opts, ctx)) !== 0) warn(tr('o mod não ficou instalado em todas as contas; veja acima ou rode npm run mod:install.'));
+  } catch (err) {
+    warn(tr('não consegui instalar o mod do Habblaud ({0}); rode npm run mod:install.', [(err as Error).message]));
+  }
+}
+
+function updateMods(dirs: string[], accounts: DetectedAccount[]): Pick<ModUpdateResult, 'installed' | 'unavailable' | 'missing'> {
   try {
     const labels = dirs.map((dir, i) => ({ dir, label: tr('Conta {0}', [accounts[i]?.short ?? tildify(dir)]) }));
     const mod = updateInstalledMods(labels, { env: process.env, home: HOME, root: ROOT, version: readPackageVersion(ROOT), claude: makeClaudeRunner() });
@@ -987,7 +1004,7 @@ function updateMods(dirs: string[], accounts: DetectedAccount[]): Pick<ModUpdate
     return mod;
   } catch (err) {
     warn(tr('não consegui conferir o mod do Habblaud ({0}).', [(err as Error).message]));
-    return { installed: false, unavailable: true };
+    return { installed: false, unavailable: true, missing: [] };
   }
 }
 

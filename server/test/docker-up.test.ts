@@ -40,8 +40,9 @@ const slash = (p: string) => p.replaceAll('\\', '/');
 
 describe('docker-up', () => {
   it('argumentos', () => {
-    expect(parseArgs([])).toEqual({ down: false, build: true, help: false });
-    expect(parseArgs(['--no-build'])).toEqual({ down: false, build: false, help: false });
+    expect(parseArgs([])).toEqual({ down: false, build: true, help: false, mod: true });
+    expect(parseArgs(['--no-build'])).toEqual({ down: false, build: false, help: false, mod: true });
+    expect(parseArgs(['--no-mod'])).toMatchObject({ mod: false });
     expect(parseArgs(['--down'])).toMatchObject({ down: true });
     expect(() => parseArgs(['--xyz'])).toThrow(/opção desconhecida/);
   });

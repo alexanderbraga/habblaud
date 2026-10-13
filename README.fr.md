@@ -194,6 +194,9 @@ ouvertes chargent le mod avec `/reload-plugins` (ou à leur réouverture). Si le
 (ci-dessous), `mod:install` retire la dérivation (tap) et le hook du `settings.json` (avec sauvegarde), puisque le mod
 fait la même chose. Vérifiez avec `npm run mod:status` ; pour revenir en arrière : `npm run mod:uninstall`.
 
+Avec Docker, vous pouvez sauter cette étape : `npm run docker:up` installe le mod dans les comptes qui ne l'ont pas
+encore (`npm run docker:up -- --no-mod` la saute).
+
 > Le mod est lu depuis ce dossier. Si vous déplacez le dossier, relancez `npm run mod:install`.
 
 <details>
@@ -361,7 +364,7 @@ npm run docker:up        # ou: npm run build && npm start (e depois npm run mod:
 > package-lock.json », lancez `git checkout -- package-lock.json` et recommencez : jusqu'à la 0.4.0, `npm install`
 > modifiait ce fichier.
 
-`docker:up` met aussi à jour le mod dans les comptes où il est déjà installé (il ne l'installe jamais tout seul) et
+`docker:up` met aussi à jour le mod dans les comptes où il est déjà installé, l'installe dans ceux qui ne l'ont pas encore (pour passer : `--no-mod`) et
 vous prévient : « Mod mis à jour en 0.3.0 pour Compte D ; sessions ouvertes : /reload-plugins ». En mode Node, lancez
 `npm run mod:install` après la mise à jour. Pour ne pas interroger GitHub, utilisez `HABBLAUD_UPDATE_CHECK=0` (dans le
 `.env`, pour Docker).

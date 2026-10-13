@@ -18,7 +18,8 @@
 //
 // Mensagens pelo escritório (habblaud-mensagens, o plugin que digita na sessão em seu nome): vai junto por padrão;
 // com --sem-mensagens fica de fora, e um já instalado continua (como o de permissões com --sem-permissoes). O
-// docker:up nunca o instala sozinho: numa conta com o mod e sem ele, só dá a dica de rodar o mod:install.
+// docker:up não o acrescenta sozinho: numa conta com o mod e sem ele, só dá a dica de rodar o mod:install (numa conta
+// sem nada do Habblaud, o docker:up instala os três, menos com --no-mod).
 //
 // Migração do jeito antigo: o mod grava o uso no mesmo arquivo do tap de statusline (usage:install) e o plugin
 // de permissões faz o mesmo que o settings hook PermissionRequest (hooks:install). Na instalação, cada um sai do
@@ -472,7 +473,7 @@ export function verifyInstall(after: AccountState, plugins: string[], version: s
 }
 
 /**
- * Para o docker:up: atualiza só o que já está instalado, nunca instala. `hint` é a dica para quem tem o mod e não o
+ * Para o docker:up: atualiza só o que já está instalado (instalar do zero é com o run(), chamado pelo docker:up). `hint` é a dica para quem tem o mod e não o
  * plugin de mensagens (que veio depois): o docker:up não o instala sozinho.
  */
 export type UpdatePlan =
@@ -899,16 +900,19 @@ export interface ModUpdateResult {
   installed: boolean;
   /** Não deu para consultar o Claude Code em nenhuma conta (ex.: `claude` fora do PATH). */
   unavailable: boolean;
+  /** Contas sem nenhum plugin do Habblaud (o docker:up instala nelas, menos com --no-mod). */
+  missing: string[];
   lines: Array<{ level: 'info' | 'warn'; text: string }>;
 }
 
 /**
  * Para cada conta com o mod instalado numa versão diferente da do package.json: relê o catálogo e atualiza os
  * plugins instalados. Com restos do nome antigo, só avisa (a troca é do mod:install). Com o mod e sem o plugin de
- * mensagens, dá a dica de rodar o mod:install. Nunca instala nada e nunca lança: qualquer falha vira um aviso.
+ * mensagens, dá a dica de rodar o mod:install. Não instala nada (as contas sem o mod voltam em `missing`) e nunca
+ * lança: qualquer falha vira um aviso.
  */
 export function updateInstalledMods(accounts: Array<{ dir: string; label: string }>, ctx: ModUpdateContext): ModUpdateResult {
-  const res: ModUpdateResult = { installed: false, unavailable: false, lines: [] };
+  const res: ModUpdateResult = { installed: false, unavailable: false, lines: [], missing: [] };
   if (!accounts.length) return res;
   // Um runner que nunca lança: qualquer exceção vira uma falha comum (o docker:up não pode cair por isso).
   const claude: ClaudeRunner = (args, env) => {
@@ -934,6 +938,7 @@ export function updateInstalledMods(accounts: Array<{ dir: string; label: string
     }
     const plan = planUpdate(state, { root: ctx.root, version: ctx.version });
     if (plan.action !== 'none' || plan.installed) res.installed = true;
+    else res.missing.push(dir);
     if (plan.action === 'warn') {
       res.lines.push({ level: 'warn', text: tr('mod na {0}: {1}', [label, plan.message]) });
       continue;

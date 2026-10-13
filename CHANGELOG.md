@@ -26,6 +26,11 @@ do meio (0.**3**.0).
   `HABBLAUD_PORTS`. O acesso pelo celular fica com o escritório sem `HABBLAUD_INSTANCE`.
   monta só `~/.grok/sessions`, somente leitura. `HABBLAUD_GROK=0` desliga. O cartão de uso do Grok mostra o
   consumo das últimas 5 h e dos últimos 7 dias (custo no preço da API da xAI e tokens), já que ele não informa limite.
+### Mudado
+
+- O `docker:up` instala o mod do Habblaud nas contas do Claude Code que ainda não o têm (uso de 5h/semanal ao vivo,
+  responder e mandar mensagens pelo escritório), pelo mesmo caminho do `npm run mod:install`. Antes ele só atualizava
+  quem já tinha. Para pular: `npm run docker:up -- --no-mod`.
 
 ## [0.11.0] - 2026-10-13
 

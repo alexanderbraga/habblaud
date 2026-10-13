@@ -818,6 +818,7 @@ describe('mod-install.ts (CLI falso, HOME falso)', () => {
       expect(res).toEqual({
         installed: true,
         unavailable: false,
+        missing: [join(home, '.claude-conta2')],
         lines: [
           {
             level: 'warn',
@@ -837,12 +838,12 @@ describe('mod-install.ts (CLI falso, HOME falso)', () => {
       { dir: join(home, '.claude-conta2'), label: 'Conta D' },
     ];
     const ctx = { env: { HOME: home }, home, root, claude: fake.runner };
-    expect(updateInstalledMods(accounts, { ...ctx, version: '0.2.0' })).toEqual({ installed: false, unavailable: false, lines: [] });
+    expect(updateInstalledMods(accounts, { ...ctx, version: '0.2.0' })).toEqual({ installed: false, unavailable: false, lines: [], missing: [join(home, '.claude'), join(home, '.claude-conta2')] });
     expect(fake.mutating).toEqual([]);
 
     await exec('install', { accounts: [join(home, '.claude-conta2')] });
     fake.calls = [];
-    expect(updateInstalledMods(accounts, { ...ctx, version: '0.2.0' })).toEqual({ installed: true, unavailable: false, lines: [] });
+    expect(updateInstalledMods(accounts, { ...ctx, version: '0.2.0' })).toEqual({ installed: true, unavailable: false, lines: [], missing: [join(home, '.claude')] });
     expect(fake.mutating).toEqual([]);
 
     // git pull: os manifestos em mod/ e o package.json passam para 0.3.0.
@@ -869,6 +870,7 @@ describe('mod-install.ts (CLI falso, HOME falso)', () => {
       installed: false,
       unavailable: true,
       lines: [{ level: 'warn', text: 'não consegui consultar o Claude Code (o comando "claude" não foi encontrado no PATH); o mod não foi conferido.' }],
+      missing: [],
     });
     const boom: ClaudeRunner = () => {
       throw new Error('explodiu');
@@ -886,7 +888,7 @@ describe('mod-install.ts (CLI falso, HOME falso)', () => {
     await exec('install', { messages: false, accounts: [join(home, '.claude-conta2')] });
     fake.calls = [];
     const hint = { level: 'info', text: 'Dica para a Conta D: rode npm run mod:install para mandar mensagens pelo escritório (plugin habblaud-mensagens)' };
-    expect(updateInstalledMods(accounts, { ...ctx, version: '0.2.0' })).toEqual({ installed: true, unavailable: false, lines: [hint] });
+    expect(updateInstalledMods(accounts, { ...ctx, version: '0.2.0' })).toEqual({ installed: true, unavailable: false, lines: [hint], missing: [join(home, '.claude')] });
     expect(fake.mutating).toEqual([]);
 
     fake.folderVersion = '0.3.0';

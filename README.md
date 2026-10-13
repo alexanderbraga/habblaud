@@ -190,6 +190,9 @@ load the mod with `/reload-plugins` (or when reopened). If the account had the o
 tap and the hook from `settings.json` (with a backup), because the mod does the same thing. Check with `npm run mod:status`; to
 undo: `npm run mod:uninstall`.
 
+With Docker you can skip this step: `npm run docker:up` installs the mod in the accounts that don't have it yet
+(`npm run docker:up -- --no-mod` skips it).
+
 > The mod is loaded from this folder. If you move the folder, run `npm run mod:install` again.
 
 <details>
@@ -347,7 +350,7 @@ npm run docker:up        # ou: npm run build && npm start (e depois npm run mod:
 > package-lock.json", run `git checkout -- package-lock.json` and try again: up to 0.4.0, `npm install` changed that
 > file.
 
-`docker:up` also updates the mod in the accounts where it's already installed (it never installs it on its own) and tells you:
+`docker:up` also updates the mod in the accounts where it's already installed, installs it in the ones that don't have it yet (skip with `--no-mod`) and tells you:
 "Mod updated to 0.3.0 on Account D; open sessions: /reload-plugins". In Node mode, run `npm run mod:install`
 after updating. To skip checking GitHub, use `HABBLAUD_UPDATE_CHECK=0` (in `.env`, for Docker).
 
