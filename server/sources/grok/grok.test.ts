@@ -500,20 +500,38 @@ describe('Grok: terceira rodada da verificação', () => {
 });
 
 describe('Grok: consumo (usage.json)', () => {
+  const H = 3_600_000;
   const usage = (turns: Array<{ endedAt: number; cost: number; tokens: number }>) =>
     JSON.stringify({ sessionId: 'x', turns: turns.map((t, i) => ({ turnNumber: i + 1, endedAt: new Date(t.endedAt).toISOString(), totalTokens: t.tokens, costUsdTicks: t.cost * 1e10 })) });
+  const grokAccount = (ctx: ReturnType<typeof setup>) => ctx.office.commit().snapshot.accounts.find((a) => a.id === '.grok');
 
-  it('soma custo e tokens dos turnos das últimas 5 h e dos últimos 7 dias, de todas as sessões, e empurra para a conta', () => {
+  it('janelas como as do Claude: abrem no 1º turno (na hora cheia), e 100% = o maior gasto já visto numa janela', () => {
+    const ctx = setup();
+    const t0 = Math.floor(ctx.now() / H) * H + 30 * 60_000; // meia hora depois da hora cheia
+    ctx.advance(t0 - ctx.now());
+    const d1 = ctx.home.session(S1, CWD, [prompt('a', t0)]);
+    const d2 = ctx.home.session(S2, OTHER, [prompt('b', t0)]);
+    // Uma janela antiga (há 20 dias) com US$ 8: é a referência de 100% das duas janelas.
+    writeFileSync(join(d1, 'usage.json'), usage([{ endedAt: t0 - 20 * 24 * H, cost: 8, tokens: 800 }, { endedAt: t0 - 60_000, cost: 1.5, tokens: 1000 }]));
+    // A janela de 5 h atual abriu há 2 h (com US$ 0,5); somada ao turno de agora: US$ 2.
+    writeFileSync(join(d2, 'usage.json'), usage([{ endedAt: t0 - 2 * H, cost: 0.5, tokens: 100 }]));
+    ctx.source.start();
+    const acc = grokAccount(ctx);
+    expect(acc?.usageStatus).toBe('ok');
+    const start5 = Math.floor((t0 - 2 * H) / H) * H;
+    expect(acc?.usage).toMatchObject({ source: 'grok', fiveHour: { utilization: 25, resetsAt: start5 + 5 * H }, spend: { fiveHour: { costUsd: 2, tokens: 1100 } } });
+    expect(acc?.usage?.sevenDay?.utilization).toBe(25);
+  });
+
+  it('janela que já fechou sem turno novo: 0%, sem reinício; nada registrado: sem números', () => {
     const ctx = setup();
     const t0 = ctx.now();
     const d1 = ctx.home.session(S1, CWD, [prompt('a', t0)]);
-    const d2 = ctx.home.session(S2, OTHER, [prompt('b', t0)]);
-    writeFileSync(join(d1, 'usage.json'), usage([{ endedAt: t0 - 60_000, cost: 1.5, tokens: 1000 }, { endedAt: t0 - 6 * 3600_000, cost: 2, tokens: 500 }]));
-    writeFileSync(join(d2, 'usage.json'), usage([{ endedAt: t0 - 2 * 3600_000, cost: 0.25, tokens: 100 }, { endedAt: t0 - 8 * 86400_000, cost: 9, tokens: 9 }]));
+    writeFileSync(join(d1, 'usage.json'), usage([{ endedAt: t0 - 6 * H, cost: 3, tokens: 30 }]));
     ctx.source.start();
-    const acc = ctx.office.commit().snapshot.accounts.find((a) => a.id === '.grok');
-    expect(acc?.usageStatus).toBe('ok');
-    expect(acc?.usage).toMatchObject({ source: 'grok', spend: { fiveHour: { costUsd: 1.75, tokens: 1100 }, sevenDay: { costUsd: 3.75, tokens: 1600 } } });
+    const u = grokAccount(ctx)?.usage;
+    expect(u?.fiveHour).toEqual({ utilization: 0 });
+    expect(u?.sevenDay?.utilization).toBe(100);
   });
 
   it('usage.json como link para fora de sessions/ não conta', () => {
@@ -524,7 +542,6 @@ describe('Grok: consumo (usage.json)', () => {
     writeFileSync(fora, usage([{ endedAt: t0 - 60_000, cost: 5, tokens: 5 }]));
     symlinkSync(fora, join(d1, 'usage.json'));
     ctx.source.start();
-    const acc = ctx.office.commit().snapshot.accounts.find((a) => a.id === '.grok');
-    expect(acc?.usage?.spend?.fiveHour.costUsd ?? 0).toBe(0);
+    expect(grokAccount(ctx)?.usage?.spend?.fiveHour.costUsd ?? 0).toBe(0);
   });
 });

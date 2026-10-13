@@ -31,6 +31,9 @@ do meio (0.**3**.0).
 - O `docker:up` instala o mod do Habblaud nas contas do Claude Code que ainda não o têm (uso de 5h/semanal ao vivo,
   responder e mandar mensagens pelo escritório), pelo mesmo caminho do `npm run mod:install`. Antes ele só atualizava
   quem já tinha. Para pular: `npm run docker:up -- --no-mod`.
+  monta só `~/.grok/sessions`, somente leitura. `HABBLAUD_GROK=0` desliga. O cartão de uso do Grok tem as
+  barras de 5 h e da semana como os outros; como o Grok não informa limite, 100% é o seu maior gasto já registrado
+  numa janela desse tamanho (a dica mostra o custo no preço da API da xAI e os tokens).
 
 ## [0.11.0] - 2026-10-13
 

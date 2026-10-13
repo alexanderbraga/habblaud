@@ -7,8 +7,8 @@
 // Conta do Codex: os números vêm dos arquivos de sessão dele, que só se renovam enquanto alguma sessão roda; por isso
 // a idade ("há 12 min") fica sempre à mostra. Sem cota nem créditos ("sem cota") nunca vira 0%. Não há o que
 // instalar para o uso: "Como funciona" abre a ajuda na seção do Codex. Sem Opus/Sonnet nem e-mail (só o plano).
-// Conta do Grok: ele não informa limite, então o cartão mostra o consumo (custo no preço da API e tokens) das últimas
-// 5 h e dos últimos 7 dias, sem barra nem percentual.
+// Conta do Grok: ele não informa limite, então 100% é o maior gasto já registrado numa janela do mesmo tamanho (as
+// janelas abrem no primeiro turno, como as do Claude Code); a dica mostra o custo e os tokens por trás da barra.
 import type { AccountInfo, UsageSpend } from '../../../shared/types';
 import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
@@ -109,18 +109,6 @@ function createMeter(long: string, short: string, title: string): Meter {
   return { el, bar, pct, reset, resetLong, resetShort };
 }
 
-/** Linha de consumo (Grok): o custo no lugar do percentual e os tokens no do reinício, sem barra. */
-function updateSpendMeter(m: Meter, s: UsageSpend, windowName: string): void {
-  setVariant(m.el, 'is-', 'spend');
-  m.el.classList.remove('is-zero', 'is-renewed');
-  setStyleVar(m.bar, '--pct', '0');
-  setText(m.pct, formatUSD(s.costUsd));
-  setText(m.resetLong, tr('{0} tokens', [formatTokens(s.tokens)]));
-  setText(m.resetShort, formatTokens(s.tokens));
-  setAttr(m.el, 'aria-label', `${windowName}: ${spendText(s)}`);
-  setTitle(m.el, `${windowName}: ${spendText(s)}`);
-}
-
 function updateMeter(m: Meter, view: UsageWindowView | null, windowName: string): void {
   if (!view || view.pct === null) {
     setVariant(m.el, 'is-', 'none');
@@ -175,7 +163,7 @@ export function createUsageSetup(): HTMLElement {
 export type CardState = 'ok' | 'stale' | 'empty' | 'noquota';
 
 function hasWindows(a: Pick<AccountInfo, 'usage'>): boolean {
-  return !!a.usage && !!(a.usage.fiveHour || a.usage.sevenDay || a.usage.spend);
+  return !!a.usage && !!(a.usage.fiveHour || a.usage.sevenDay);
 }
 
 /** Estado efetivo do cartão. */
@@ -198,7 +186,7 @@ export function showsUsageAge(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'pr
 export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'>): string {
   if (a.email) return a.email;
   if (isCodex(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Codex';
-  if (providerOf(a) === 'grok') return tr('consumo, sem limite');
+  if (providerOf(a) === 'grok') return tr('100% = seu maior gasto');
   return a.configDir;
 }
 
@@ -372,10 +360,7 @@ export class UsageCards {
     const week = usage ? usageWindowView(usage.sevenDay, usage.fetchedAt, now, WEEK_MS) : null;
     const showMeters = hasWindows(a);
     setHidden(r.meters, !showMeters);
-    if (usage?.spend) {
-      updateSpendMeter(r.five, usage.spend.fiveHour, tr('Últimas 5 horas'));
-      updateSpendMeter(r.week, usage.spend.sevenDay, tr('Últimos 7 dias'));
-    } else if (usage && showMeters) {
+    if (usage && showMeters) {
       updateMeter(r.five, five, tr('Sessão de 5 horas'));
       updateMeter(r.week, week, tr('Semana'));
     }
@@ -426,10 +411,7 @@ export class UsageCards {
     rows.push([tr('Pasta'), a.configDir]);
     rows.push([tr('Sessões abertas'), String(a.sessions)]);
     const u = a.usage;
-    if (u?.spend) {
-      rows.push([tr('Últimas 5 h'), spendText(u.spend.fiveHour)]);
-      rows.push([tr('Últimos 7 dias'), spendText(u.spend.sevenDay)]);
-    } else if (u && (u.fiveHour || u.sevenDay)) {
+    if (u && (u.fiveHour || u.sevenDay)) {
       rows.push([tr('Sessão de 5 h'), five?.summary ?? '—']);
       rows.push([tr('Semana'), week?.summary ?? '—']);
       // Opus e Sonnet são janelas do Claude: no Codex não existem.
@@ -437,6 +419,10 @@ export class UsageCards {
       const sonnet = codex ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
       if (opus) rows.push([tr('Opus (semana)'), opus.summary]);
       if (sonnet) rows.push([tr('Sonnet (semana)'), sonnet.summary]);
+    }
+    if (u?.spend) {
+      rows.push([tr('Gasto em 5 h'), spendText(u.spend.fiveHour)]);
+      rows.push([tr('Gasto em 7 dias'), spendText(u.spend.sevenDay)]);
     }
     if (u && state === 'noquota') rows.push([tr('Cota'), tr('sem cota nem créditos agora')]);
     if (u && (state !== 'empty' || codex)) {
@@ -447,7 +433,7 @@ export class UsageCards {
 
     // Grok: não há limite nem o que instalar; os números são o que ele registra em cada sessão.
     if (providerOf(a) === 'grok') {
-      setText(r.tipNote, tr('O Grok não informa limite de uso: este é o consumo que ele registra em cada sessão (usage.json), com o custo no preço da API da xAI. No plano por assinatura, o custo é só uma referência.'));
+      setText(r.tipNote, tr('O Grok não informa limite de uso: 100% é o seu maior gasto já registrado numa janela de 5 h (ou numa semana), somado do usage.json de cada sessão. O custo é o preço da API da xAI; no plano por assinatura, é só uma referência.'));
       setHidden(r.tipNote, false);
       setHidden(r.tipSetup, true);
       return;

@@ -683,9 +683,10 @@ activité, tâches, titre, modèle, tokens, terminal et historique. La puce du c
   sessions ouvertes (`active_sessions.json`) et, pour chaque session, la conversation (`updates.jsonl`) et le résumé
   (`summary.json`). Il ne lit jamais `auth.json` ni `config.toml`.
 - **Pas encore possible :** approuver des demandes ou envoyer des messages depuis le bureau, et Grok n'indique pas de
-  limite d'utilisation (à la place, sa carte d'utilisation
-  montre la consommation : coût au prix de l'API xAI et tokens des 5 dernières heures et des 7 derniers jours, additionnés
-  depuis le `usage.json` de chaque session). Une demande d'approbation ouverte ne fait pas
+  limite d'utilisation (sa carte d'utilisation fonctionne
+  comme les autres, avec les barres 5 h et hebdomadaire, mais 100 % correspond à votre plus grosse dépense jamais
+  enregistrée sur une fenêtre de cette taille, additionnée depuis le `usage.json` de chaque session ; l'info-bulle montre
+  le coût au prix de l'API xAI et les tokens). Une demande d'approbation ouverte ne fait pas
   lever la main au personnage : il reste « au travail » jusqu'à la fin du tour.
 - Les sessions `grok -p` (sans le TUI) et celles de sous-agents n'entrent pas dans le bureau ; celles de sous-agent
   restent aussi hors de l'historique. Une session ne compte comme ouverte que tant que son processus est vraiment

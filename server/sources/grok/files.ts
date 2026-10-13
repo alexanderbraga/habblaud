@@ -245,24 +245,28 @@ export function recentSessions(dir: string, since: number): ActiveSession[] {
   return out;
 }
 
-/**
- * Consumo de todas as sessões (os `usage.json`, só arquivos de verdade dentro de sessions/): custo e tokens dos turnos
- * que terminaram nas últimas 5 h e nos últimos 7 dias. Sessão cujo usage.json não muda há mais de 7 dias nem é lida.
- */
-export function usageTotals(dir: string, now: number): { fiveHour: { costUsd: number; tokens: number }; sevenDay: { costUsd: number; tokens: number } } {
-  const fiveHour = { costUsd: 0, tokens: 0 };
-  const sevenDay = { costUsd: 0, tokens: 0 };
-  const out = { fiveHour, sevenDay };
+/** Um turno registrado no usage.json: quando terminou, custo em dólares e tokens. */
+export interface GrokTurnUsage {
+  at: number;
+  costUsd: number;
+  tokens: number;
+}
+
+/** Turnos de um usage.json já lido, por caminho (relido só quando o arquivo muda). */
+export type GrokUsageCache = Map<string, { mtimeMs: number; turns: GrokTurnUsage[] }>;
+
+/** Turnos de todas as sessões (os `usage.json`, só arquivos de verdade dentro de sessions/, sem links), em ordem. */
+export function usageTurns(dir: string, cache: GrokUsageCache = new Map()): GrokTurnUsage[] {
   const root = realRoot(dir);
-  if (!root) return out;
+  if (!root) return [];
   const base = join(dir, SESSIONS_DIR);
-  const weekAgo = now - 7 * 86_400_000;
-  const fiveAgo = now - 5 * 3_600_000;
+  const out: GrokTurnUsage[] = [];
+  const seen = new Set<string>();
   let groups: string[];
   try {
     groups = readdirSync(base);
   } catch {
-    return out;
+    return [];
   }
   for (const g of groups) {
     let ids: string[];
@@ -275,31 +279,79 @@ export function usageTotals(dir: string, now: number): { fiveHour: { costUsd: nu
       if (!isGrokSessionId(id)) continue;
       const file = join(base, g, id, USAGE_FILE);
       if (!inside(root, base, file, 'file')) continue;
-      let turns: unknown;
+      seen.add(file);
+      let mtimeMs: number;
       try {
-        if (statSync(file).mtimeMs < weekAgo) continue;
-        turns = (JSON.parse(readFileSync(file, 'utf8')) as { turns?: unknown }).turns;
+        mtimeMs = statSync(file).mtimeMs;
       } catch {
         continue;
       }
-      if (!Array.isArray(turns)) continue;
-      for (const t of turns as Array<Record<string, unknown>>) {
-        const at = typeof t?.endedAt === 'string' ? Date.parse(t.endedAt) : NaN;
-        if (!(at >= weekAgo && at <= now)) continue;
-        const cost = typeof t.costUsdTicks === 'number' && t.costUsdTicks > 0 ? t.costUsdTicks / USD_TICKS : 0;
-        const tokens = typeof t.totalTokens === 'number' && t.totalTokens > 0 ? t.totalTokens : 0;
-        sevenDay.costUsd += cost;
-        sevenDay.tokens += tokens;
-        if (at >= fiveAgo) {
-          fiveHour.costUsd += cost;
-          fiveHour.tokens += tokens;
-        }
+      let hit = cache.get(file);
+      if (!hit || hit.mtimeMs !== mtimeMs) {
+        hit = { mtimeMs, turns: parseUsageTurns(file) };
+        cache.set(file, hit);
       }
+      out.push(...hit.turns);
     }
   }
-  // Arredonda no centavo de centavo: a soma de frações não vira 1.7500000000000002.
-  for (const w of [fiveHour, sevenDay]) w.costUsd = Math.round(w.costUsd * 1e4) / 1e4;
+  for (const k of cache.keys()) if (!seen.has(k)) cache.delete(k);
+  return out.sort((a, b) => a.at - b.at);
+}
+
+function parseUsageTurns(file: string): GrokTurnUsage[] {
+  let turns: unknown;
+  try {
+    turns = (JSON.parse(readFileSync(file, 'utf8')) as { turns?: unknown }).turns;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(turns)) return [];
+  const out: GrokTurnUsage[] = [];
+  for (const t of turns as Array<Record<string, unknown>>) {
+    const at = typeof t?.endedAt === 'string' ? Date.parse(t.endedAt) : NaN;
+    if (!Number.isFinite(at)) continue;
+    const costUsd = typeof t.costUsdTicks === 'number' && t.costUsdTicks > 0 ? t.costUsdTicks / USD_TICKS : 0;
+    const tokens = typeof t.totalTokens === 'number' && t.totalTokens > 0 ? t.totalTokens : 0;
+    out.push({ at, costUsd, tokens });
+  }
   return out;
+}
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * Janelas no jeito do Claude Code: uma abre no primeiro turno depois da anterior (na hora cheia) e dura `windowMs`.
+ * Como o Grok não informa limite, 100% é o maior gasto já registrado numa janela desse tamanho. Janela atual
+ * fechada (nenhum turno desde que acabou): 0%, sem reinício.
+ */
+export function usageWindow(turns: readonly GrokTurnUsage[], windowMs: number, now: number): { utilization: number; resetsAt?: number } {
+  let start: number | undefined;
+  let sum = 0;
+  let max = 0;
+  for (const t of turns) {
+    if (t.at > now) break;
+    if (start === undefined || t.at >= start + windowMs) {
+      start = Math.floor(t.at / HOUR_MS) * HOUR_MS;
+      sum = 0;
+    }
+    sum += t.costUsd;
+    if (sum > max) max = sum;
+  }
+  if (start === undefined || now >= start + windowMs) return { utilization: 0 };
+  return { utilization: max > 0 ? Math.min(100, Math.round((sum / max) * 100)) : 0, resetsAt: start + windowMs };
+}
+
+/** Custo e tokens dos turnos que terminaram nos últimos `ms` (a dica do cartão mostra os números por trás da %). */
+export function usageSpend(turns: readonly GrokTurnUsage[], ms: number, now: number): { costUsd: number; tokens: number } {
+  let costUsd = 0;
+  let tokens = 0;
+  for (const t of turns) {
+    if (t.at < now - ms || t.at > now) continue;
+    costUsd += t.costUsd;
+    tokens += t.tokens;
+  }
+  // Arredonda no centésimo de centavo: a soma de frações não vira 1.7500000000000002.
+  return { costUsd: Math.round(costUsd * 1e4) / 1e4, tokens };
 }
 
 export interface GrokSummary {

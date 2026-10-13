@@ -651,8 +651,9 @@ model, tokens, terminal and history. The account chip is outlined and carries th
   sessions (`active_sessions.json`) and, for each session, the conversation (`updates.jsonl`) and the summary
   (`summary.json`). It never reads `auth.json` or `config.toml`.
 - **Not yet possible:** approving requests or sending messages from the office, and Grok doesn't report usage limits
-  (its usage card shows consumption instead: cost at the xAI API price and tokens in the last 5 h and 7 days, summed
-  from each session's `usage.json`). An open approval request doesn't raise the character's hand: it stays
+  (its usage card works like the others, with 5 h and weekly bars, but 100% is your highest spend ever recorded in a
+  window of that size, summed from each session's `usage.json`; the tooltip shows the cost at the xAI API price and the
+  tokens). An open approval request doesn't raise the character's hand: it stays
   "working" until the turn ends.
 - `grok -p` sessions (without the TUI) and subagent sessions don't join the office; subagent ones are also left out of
   the history. A session only counts as open while its process really is `grok`.
