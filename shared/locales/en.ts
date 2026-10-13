@@ -2597,4 +2597,12 @@ export const EN: Readonly<Record<string, string>> = {
   "Para responder, use o Grok": "To reply, use Grok",
   "Abra o Claude Code{0} ou o {1} em qualquer projeto e veja seu agente chegar.": "Open Claude Code{0} or {1} in any project and watch your agent arrive.",
   "Abra o Claude Code{0}, o Codex ou o Grok em qualquer projeto e veja seu agente chegar.": "Open Claude Code{0}, Codex or Grok in any project and watch your agent arrive.",
+  "arquivos do Grok": "Grok files",
+  "{0} · {1} tokens": "{0} · {1} tokens",
+  "{0} tokens": "{0} tokens",
+  "consumo, sem limite": "usage, no limit",
+  "Últimas 5 horas": "Last 5 hours",
+  "Últimos 7 dias": "Last 7 days",
+  "Últimas 5 h": "Last 5 h",
+  "O Grok não informa limite de uso: este é o consumo que ele registra em cada sessão (usage.json), com o custo no preço da API da xAI. No plano por assinatura, o custo é só uma referência.": "Grok doesn't report a usage limit: this is the usage it records in each session (usage.json), with the cost at the xAI API price. On a subscription plan, the cost is only a reference.",
 };

@@ -4,7 +4,8 @@
 // - active_sessions.json: as sessões ABERTAS (session_id, pid, cwd, opened_at), mantido pelo próprio Grok;
 // - sessions/<cwd codificado>/<session_id>/: uma pasta por sessão, agrupada pela pasta de trabalho (encodeURIComponent
 //   do cwd; nome longo demais vira slug + hash, com o caminho original num arquivo `.cwd` do grupo). Dela o Habblaud
-//   lê só `updates.jsonl` (a conversa, no formato de updates do ACP) e `summary.json` (título, cwd, horários).
+//   lê só `updates.jsonl` (a conversa, no formato de updates do ACP), `summary.json` (título, cwd, horários) e
+//   `usage.json` (tokens e custo de cada turno, para o consumo da conta).
 //
 // Privacidade: NUNCA lê auth.json, config.toml nem nada fora de active_sessions.json e sessions/.
 import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
@@ -17,6 +18,9 @@ export const ACTIVE_FILE = 'active_sessions.json';
 export const SESSIONS_DIR = 'sessions';
 export const UPDATES_FILE = 'updates.jsonl';
 export const SUMMARY_FILE = 'summary.json';
+export const USAGE_FILE = 'usage.json';
+/** O Grok grava o custo em "ticks": 1 dólar = 10^10 ticks (o mesmo da API da xAI). */
+const USD_TICKS = 1e10;
 
 /** Id de sessão aceito (UUID do Grok ou o `-s` de um cliente): nada de barra nem `..`. */
 export function isGrokSessionId(id: string): boolean {
@@ -238,6 +242,63 @@ export function recentSessions(dir: string, since: number): ActiveSession[] {
       if (cwd) out.push({ sessionId: id, cwd, openedAt: mtime });
     }
   }
+  return out;
+}
+
+/**
+ * Consumo de todas as sessões (os `usage.json`, só arquivos de verdade dentro de sessions/): custo e tokens dos turnos
+ * que terminaram nas últimas 5 h e nos últimos 7 dias. Sessão cujo usage.json não muda há mais de 7 dias nem é lida.
+ */
+export function usageTotals(dir: string, now: number): { fiveHour: { costUsd: number; tokens: number }; sevenDay: { costUsd: number; tokens: number } } {
+  const fiveHour = { costUsd: 0, tokens: 0 };
+  const sevenDay = { costUsd: 0, tokens: 0 };
+  const out = { fiveHour, sevenDay };
+  const root = realRoot(dir);
+  if (!root) return out;
+  const base = join(dir, SESSIONS_DIR);
+  const weekAgo = now - 7 * 86_400_000;
+  const fiveAgo = now - 5 * 3_600_000;
+  let groups: string[];
+  try {
+    groups = readdirSync(base);
+  } catch {
+    return out;
+  }
+  for (const g of groups) {
+    let ids: string[];
+    try {
+      ids = readdirSync(join(base, g));
+    } catch {
+      continue;
+    }
+    for (const id of ids) {
+      if (!isGrokSessionId(id)) continue;
+      const file = join(base, g, id, USAGE_FILE);
+      if (!inside(root, base, file, 'file')) continue;
+      let turns: unknown;
+      try {
+        if (statSync(file).mtimeMs < weekAgo) continue;
+        turns = (JSON.parse(readFileSync(file, 'utf8')) as { turns?: unknown }).turns;
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(turns)) continue;
+      for (const t of turns as Array<Record<string, unknown>>) {
+        const at = typeof t?.endedAt === 'string' ? Date.parse(t.endedAt) : NaN;
+        if (!(at >= weekAgo && at <= now)) continue;
+        const cost = typeof t.costUsdTicks === 'number' && t.costUsdTicks > 0 ? t.costUsdTicks / USD_TICKS : 0;
+        const tokens = typeof t.totalTokens === 'number' && t.totalTokens > 0 ? t.totalTokens : 0;
+        sevenDay.costUsd += cost;
+        sevenDay.tokens += tokens;
+        if (at >= fiveAgo) {
+          fiveHour.costUsd += cost;
+          fiveHour.tokens += tokens;
+        }
+      }
+    }
+  }
+  // Arredonda no centavo de centavo: a soma de frações não vira 1.7500000000000002.
+  for (const w of [fiveHour, sevenDay]) w.costUsd = Math.round(w.costUsd * 1e4) / 1e4;
   return out;
 }
 

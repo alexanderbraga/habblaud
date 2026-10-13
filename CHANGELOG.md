@@ -15,7 +15,7 @@ do meio (0.**3**.0).
 - `HABBLAUD_PROJECT_ROOTS`: o escritório mostra só as sessões abertas nas pastas escolhidas (ex.: a de uma empresa ou cliente).
   O histórico do terminal, as permissões e os terminais abertos seguem o mesmo filtro, e uma sessão que passa a mexer
   em outra pasta sai do escritório. Nomes, timelapse e Meu dia ficam numa pasta própria de cada escopo. No Docker, o
-  `docker:up` repassa as pastas já expandidas.
+  `docker:up` repassa as pastas já expandidas. O Novo agente e o terminal interativo recusam pasta de fora.
 - Grok no escritório: as sessões abertas da CLI `grok` aparecem com o selo **GROK**, com atividade, tarefas, título,
   modelo, tokens, terminal e histórico, lidas de `~/.grok` (ou `GROK_HOME`) sem instalar nada. No Docker o `docker:up`
   monta só `~/.grok/sessions`, somente leitura. `HABBLAUD_GROK=0` desliga.
@@ -24,6 +24,8 @@ do meio (0.**3**.0).
   outras (container, volume e endereço `<nome>.localhost` próprios). Os hooks de permissão do Claude Code e do
   Codex mandam cada pedido para a instância da pasta da sessão, e o plugin de mensagens pergunta às portas de
   `HABBLAUD_PORTS`. O acesso pelo celular fica com o escritório sem `HABBLAUD_INSTANCE`.
+  monta só `~/.grok/sessions`, somente leitura. `HABBLAUD_GROK=0` desliga. O cartão de uso do Grok mostra o
+  consumo das últimas 5 h e dos últimos 7 dias (custo no preço da API da xAI e tokens), já que ele não informa limite.
 
 ## [0.11.0] - 2026-10-13
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountInfo } from '../../../shared/types';
-import { cardState, codexUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
+import { cardState, codexUsageNote, showsUsageAge, sourceLabel, spendText, usageMessage, usageSubtitle } from './usage';
 
 const MIN = 60_000;
 type Acc = Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider' | 'email' | 'plan' | 'configDir'>;
@@ -48,5 +48,23 @@ describe('cartão de uso de uma conta do Codex', () => {
     expect(usageSubtitle({ email: 'a@b.c', configDir: '~/.claude' })).toBe('a@b.c');
     expect(usageSubtitle({ configDir: '~/.claude' })).toBe('~/.claude');
     expect(codexUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
+  });
+});
+
+describe('cartão de uso da conta do Grok (consumo, sem limite)', () => {
+  const spend = { fiveHour: { costUsd: 1.75, tokens: 1_100 }, sevenDay: { costUsd: 12.5, tokens: 2_300_000 } };
+  const grok = (over: Partial<Acc> = {}): Acc => ({ provider: 'grok', usageStatus: 'ok', configDir: '~/.grok', usage: { source: 'grok', spend, fetchedAt: 0 }, ...over });
+
+  it('com o consumo somado o cartão tem números (nunca "sem dados"), mesmo sem janelas de limite', () => {
+    expect(cardState(grok())).toBe('ok');
+    expect(cardState(grok({ usageStatus: 'stale' }))).toBe('stale');
+    expect(cardState(grok({ usage: undefined, usageStatus: 'disabled' }))).toBe('empty');
+  });
+
+  it('custo e tokens de cada janela; origem e subtítulo próprios', () => {
+    expect(spendText(spend.fiveHour)).toMatch(/^US\$\s1,75 · 1,1 k tokens$/);
+    expect(spendText(spend.sevenDay)).toMatch(/^US\$\s12,50 · 2,3 M tokens$/);
+    expect(sourceLabel({ source: 'grok', fetchedAt: 0 })).toBe('arquivos do Grok');
+    expect(usageSubtitle(grok())).toBe('consumo, sem limite');
   });
 });

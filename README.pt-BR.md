@@ -645,8 +645,9 @@ título, modelo, tokens, terminal e histórico. O chip da conta é vazado e leva
 - **Sem instalar nada:** o Habblaud lê o que o próprio Grok grava em `~/.grok` (ou `GROK_HOME`): a lista das sessões
   abertas (`active_sessions.json`) e, de cada sessão, a conversa (`updates.jsonl`) e o resumo (`summary.json`). Nunca
   lê `auth.json` nem `config.toml`.
-- **Ainda não dá** para aprovar pedidos nem mandar mensagens pelo escritório, e o Grok não informa limite de uso (a
-  conta dele fica fora do painel de uso). Um pedido de aprovação aberto não levanta a mão do personagem: ele fica
+- **Ainda não dá** para aprovar pedidos nem mandar mensagens pelo escritório, e o Grok não informa limite de uso (no
+  lugar do limite, o cartão de uso mostra o consumo: custo no preço da API da xAI e tokens das últimas 5 h e dos
+  últimos 7 dias, somados do `usage.json` de cada sessão). Um pedido de aprovação aberto não levanta a mão do personagem: ele fica
   "trabalhando" até o turno terminar.
 - Sessões do `grok -p` (sem o TUI) e de subagentes não entram no escritório; as de subagente também ficam fora do
   histórico. Uma sessão só conta como aberta enquanto o processo dela é mesmo o `grok`.

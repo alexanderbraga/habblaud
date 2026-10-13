@@ -378,7 +378,11 @@ Fonte `sources/grok/` (`provider: 'grok'`), ligada quando há `GROK_HOME` (ou `~
   ser dado de uma ferramenta). Como a conversa nem sempre tem `cwd`, o
   terminal aceita arquivo sem nenhum só para agentes do Grok, pela sala (e o histórico, pelo `cwd` do índice,
   `HistorySession.cwd`); Claude Code e Codex continuam exigindo a pasta no arquivo.
-- Sem permissões, mensagens nem uso de 5h/semanal.
+- **Consumo** (`usageTotals`, a cada 60 s): soma os turnos dos `usage.json` de todas as sessões (mesma conferência de
+  links), por `endedAt`: custo (`costUsdTicks` / 10^10 = dólares, preço da API) e `totalTokens` das últimas 5 h e dos
+  últimos 7 dias, empurrados com `accounts.setUsage` (`source: 'grok'`, só `spend`, sem janelas de limite). É o
+  consumo da conta inteira, como o uso das outras contas (o escopo por pasta não filtra).
+- Sem permissões, mensagens nem limite de uso (o Grok não informa).
 
 ## Variáveis de ambiente
 

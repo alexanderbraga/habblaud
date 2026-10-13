@@ -29,13 +29,15 @@ import { fileScope } from '../scope';
 import type { AgentSource } from '../source';
 import { FileTail } from '../tail';
 import type { TerminalParser } from '../terminal';
-import { findSessionDir, readActiveSessions, readSummary, recentSessions, sessionDirOk, updatesPathOf, updatesPathOk, type ActiveSession, type GrokSummary } from './files';
+import { findSessionDir, readActiveSessions, usageTotals, readSummary, recentSessions, sessionDirOk, updatesPathOf, updatesPathOk, type ActiveSession, type GrokSummary } from './files';
 import { createGrokState, createGrokTerminalParser, parseGrokLine, type GrokLineResult, type GrokState } from './updates';
 import { tr } from '../../../shared/i18n';
 
 /** Docker: presença = conversa modificada nos últimos 30 min (revista a cada 10 s). */
 export const RECENT_MS = 30 * 60_000;
 const RECENT_SCAN_MS = 10_000;
+/** Consumo da conta (usage.json de todas as sessões): relido a cada 60 s. */
+const USAGE_SCAN_MS = 60_000;
 /** 'working' sem nenhuma escrita na conversa por este tempo: o turno morreu (crash, Ctrl+C sem registro). */
 export const WORKING_QUIET_MS = 30 * 60_000;
 /** Tempo que a sessão precisa ficar ausente da lista para ser dada como encerrada. */
@@ -133,6 +135,7 @@ export class GrokSource implements AgentSource {
   private recentAt = -Infinity;
   private trackers = new Map<string, Tracker>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  private usageAt = -Infinity;
   private error?: string;
   private readonly now: () => number;
   private readonly tailBytes: number;
@@ -204,6 +207,10 @@ export class GrokSource implements AgentSource {
 
   poll(boot = false): void {
     const now = this.now();
+    if (now - this.usageAt >= USAGE_SCAN_MS) {
+      this.usageAt = now;
+      this.opts.accounts.setUsage(this.accountId, { source: 'grok', fetchedAt: now, spend: usageTotals(this.opts.dir, now) });
+    }
     if (this.opts.inDocker) {
       if (now - this.recentAt >= RECENT_SCAN_MS) {
         this.recentAt = now;
