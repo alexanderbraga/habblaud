@@ -2603,7 +2603,6 @@ export const ES: Readonly<Record<string, string>> = {
   "o mod não ficou instalado em todas as contas; veja acima ou rode npm run mod:install.": "el mod no quedó instalado en todas las cuentas; mira arriba o ejecuta npm run mod:install.",
   "não consegui instalar o mod do Habblaud ({0}); rode npm run mod:install.": "no pude instalar el mod de Habblaud ({0}); ejecuta npm run mod:install.",
   "100% = seu maior gasto": "100% = tu mayor gasto",
-  "Gasto em 5 h": "Gasto en 5 h",
   "Gasto em 7 dias": "Gasto en 7 días",
-  "O Grok não informa limite de uso: 100% é o seu maior gasto já registrado numa janela de 5 h (ou numa semana), somado do usage.json de cada sessão. O custo é o preço da API da xAI; no plano por assinatura, é só uma referência.": "Grok no informa un límite de uso: 100% es tu mayor gasto registrado en una ventana de 5 h (o en una semana), sumado del usage.json de cada sesión. El costo es el precio de la API de xAI; en el plan por suscripción, es solo una referencia.",
+  "O Grok só tem o limite da semana, e não informa quanto é: 100% é o seu maior gasto já registrado numa semana, somado do usage.json de cada sessão. O custo é o preço da API da xAI; no plano por assinatura, é só uma referência.": "Grok solo tiene el límite semanal, y no informa cuánto es: 100% es tu mayor gasto registrado en una semana, sumado del usage.json de cada sesión. El costo es el precio de la API de xAI; en el plan por suscripción, es solo una referencia.",
 };

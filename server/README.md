@@ -380,9 +380,9 @@ Fonte `sources/grok/` (`provider: 'grok'`), ligada quando há `GROK_HOME` (ou `~
   `HistorySession.cwd`); Claude Code e Codex continuam exigindo a pasta no arquivo.
 - **Uso** (`usageTurns`/`usageWindow`, a cada 60 s): os turnos dos `usage.json` de todas as sessões (mesma
   conferência de links; cache por mtime), com `endedAt`, custo (`costUsdTicks` / 10^10 = dólares, preço da API) e
-  `totalTokens`. Janelas como as do Claude Code: abrem no primeiro turno depois da anterior (na hora cheia) e duram 5 h
-  ou 7 dias. Sem limite informado, 100% = o maior gasto já registrado numa janela do mesmo tamanho; janela fechada sem
-  turno novo = 0%. `spend` leva custo e tokens das últimas 5 h e 7 dias para a dica. Empurrado com
+  `totalTokens`. Só a janela da semana (o plano do Grok não tem a de 5 h), como as do Claude Code: abre no primeiro
+  turno depois da anterior (na hora cheia) e dura 7 dias. Sem limite informado, 100% = o maior gasto já registrado
+  numa semana; semana fechada sem turno novo = 0%. `spend.sevenDay` leva custo e tokens dos últimos 7 dias para a dica. Empurrado com
   `accounts.setUsage` (`source: 'grok'`); é o uso da conta inteira (o escopo por pasta não filtra).
 - Sem permissões, mensagens nem limite de uso (o Grok não informa).
 

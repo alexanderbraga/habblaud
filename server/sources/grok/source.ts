@@ -38,7 +38,6 @@ export const RECENT_MS = 30 * 60_000;
 const RECENT_SCAN_MS = 10_000;
 /** Consumo da conta (usage.json de todas as sessões): relido a cada 60 s. */
 const USAGE_SCAN_MS = 60_000;
-const FIVE_HOURS_MS = 5 * 3_600_000;
 const WEEK_MS = 7 * 86_400_000;
 /** 'working' sem nenhuma escrita na conversa por este tempo: o turno morreu (crash, Ctrl+C sem registro). */
 export const WORKING_QUIET_MS = 30 * 60_000;
@@ -217,9 +216,9 @@ export class GrokSource implements AgentSource {
         this.opts.accounts.setUsage(this.accountId, {
           source: 'grok',
           fetchedAt: now,
-          fiveHour: usageWindow(turns, FIVE_HOURS_MS, now),
+          // O plano do Grok só tem a janela da semana (sem a de 5 h).
           sevenDay: usageWindow(turns, WEEK_MS, now),
-          spend: { fiveHour: usageSpend(turns, FIVE_HOURS_MS, now), sevenDay: usageSpend(turns, WEEK_MS, now) },
+          spend: { sevenDay: usageSpend(turns, WEEK_MS, now) },
         });
       }
     }

@@ -649,9 +649,9 @@ título, modelo, tokens, terminal e histórico. O chip da conta é vazado e leva
   abertas (`active_sessions.json`) e, de cada sessão, a conversa (`updates.jsonl`) e o resumo (`summary.json`). Nunca
   lê `auth.json` nem `config.toml`.
 - **Ainda não dá** para aprovar pedidos nem mandar mensagens pelo escritório, e o Grok não informa limite de uso (o
-  cartão de uso funciona como os outros, com as barras de 5 h e da semana, mas 100% é o seu maior gasto já registrado
-  numa janela desse tamanho, somado do `usage.json` de cada sessão; a dica mostra o custo no preço da API da xAI e os
-  tokens). Um pedido de aprovação aberto não levanta a mão do personagem: ele fica
+  plano dele só tem o limite da semana, então o cartão de uso mostra só a barra da semana, como os outros; 100% é o seu
+  maior gasto já registrado numa semana, somado do `usage.json` de cada sessão, e a dica mostra o custo no preço da API
+  da xAI e os tokens). Um pedido de aprovação aberto não levanta a mão do personagem: ele fica
   "trabalhando" até o turno terminar.
 - Sessões do `grok -p` (sem o TUI) e de subagentes não entram no escritório; as de subagente também ficam fora do
   histórico. Uma sessão só conta como aberta enquanto o processo dela é mesmo o `grok`.

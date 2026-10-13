@@ -501,37 +501,35 @@ describe('Grok: terceira rodada da verificação', () => {
 
 describe('Grok: consumo (usage.json)', () => {
   const H = 3_600_000;
+  const D = 24 * H;
   const usage = (turns: Array<{ endedAt: number; cost: number; tokens: number }>) =>
     JSON.stringify({ sessionId: 'x', turns: turns.map((t, i) => ({ turnNumber: i + 1, endedAt: new Date(t.endedAt).toISOString(), totalTokens: t.tokens, costUsdTicks: t.cost * 1e10 })) });
   const grokAccount = (ctx: ReturnType<typeof setup>) => ctx.office.commit().snapshot.accounts.find((a) => a.id === '.grok');
 
-  it('janelas como as do Claude: abrem no 1º turno (na hora cheia), e 100% = o maior gasto já visto numa janela', () => {
-    const ctx = setup();
-    const t0 = Math.floor(ctx.now() / H) * H + 30 * 60_000; // meia hora depois da hora cheia
-    ctx.advance(t0 - ctx.now());
-    const d1 = ctx.home.session(S1, CWD, [prompt('a', t0)]);
-    const d2 = ctx.home.session(S2, OTHER, [prompt('b', t0)]);
-    // Uma janela antiga (há 20 dias) com US$ 8: é a referência de 100% das duas janelas.
-    writeFileSync(join(d1, 'usage.json'), usage([{ endedAt: t0 - 20 * 24 * H, cost: 8, tokens: 800 }, { endedAt: t0 - 60_000, cost: 1.5, tokens: 1000 }]));
-    // A janela de 5 h atual abriu há 2 h (com US$ 0,5); somada ao turno de agora: US$ 2.
-    writeFileSync(join(d2, 'usage.json'), usage([{ endedAt: t0 - 2 * H, cost: 0.5, tokens: 100 }]));
-    ctx.source.start();
-    const acc = grokAccount(ctx);
-    expect(acc?.usageStatus).toBe('ok');
-    const start5 = Math.floor((t0 - 2 * H) / H) * H;
-    expect(acc?.usage).toMatchObject({ source: 'grok', fiveHour: { utilization: 25, resetsAt: start5 + 5 * H }, spend: { fiveHour: { costUsd: 2, tokens: 1100 } } });
-    expect(acc?.usage?.sevenDay?.utilization).toBe(25);
-  });
-
-  it('janela que já fechou sem turno novo: 0%, sem reinício; nada registrado: sem números', () => {
+  it('só a janela da semana (a do plano do Grok): abre no 1º turno, na hora cheia; 100% = o maior gasto já visto numa semana', () => {
     const ctx = setup();
     const t0 = ctx.now();
     const d1 = ctx.home.session(S1, CWD, [prompt('a', t0)]);
-    writeFileSync(join(d1, 'usage.json'), usage([{ endedAt: t0 - 6 * H, cost: 3, tokens: 30 }]));
+    const d2 = ctx.home.session(S2, OTHER, [prompt('b', t0)]);
+    // Uma semana antiga (há 20 dias) com US$ 8: a referência de 100%.
+    writeFileSync(join(d1, 'usage.json'), usage([{ endedAt: t0 - 20 * D, cost: 8, tokens: 800 }, { endedAt: t0 - 60_000, cost: 1.5, tokens: 1000 }]));
+    // A semana atual abriu há 2 dias (com US$ 0,5); somada ao turno de agora: US$ 2.
+    writeFileSync(join(d2, 'usage.json'), usage([{ endedAt: t0 - 2 * D, cost: 0.5, tokens: 100 }]));
     ctx.source.start();
-    const u = grokAccount(ctx)?.usage;
-    expect(u?.fiveHour).toEqual({ utilization: 0 });
-    expect(u?.sevenDay?.utilization).toBe(100);
+    const acc = grokAccount(ctx);
+    expect(acc?.usageStatus).toBe('ok');
+    const start = Math.floor((t0 - 2 * D) / H) * H;
+    expect(acc?.usage).toMatchObject({ source: 'grok', sevenDay: { utilization: 25, resetsAt: start + 7 * D }, spend: { sevenDay: { costUsd: 2, tokens: 1100 } } });
+    expect(acc?.usage?.fiveHour).toBeUndefined();
+  });
+
+  it('semana que já fechou sem turno novo: 0%, sem reinício', () => {
+    const ctx = setup();
+    const t0 = ctx.now();
+    const d1 = ctx.home.session(S1, CWD, [prompt('a', t0)]);
+    writeFileSync(join(d1, 'usage.json'), usage([{ endedAt: t0 - 8 * D, cost: 3, tokens: 30 }]));
+    ctx.source.start();
+    expect(grokAccount(ctx)?.usage?.sevenDay).toEqual({ utilization: 0 });
   });
 
   it('usage.json como link para fora de sessions/ não conta', () => {
@@ -542,6 +540,6 @@ describe('Grok: consumo (usage.json)', () => {
     writeFileSync(fora, usage([{ endedAt: t0 - 60_000, cost: 5, tokens: 5 }]));
     symlinkSync(fora, join(d1, 'usage.json'));
     ctx.source.start();
-    expect(grokAccount(ctx)?.usage?.spend?.fiveHour.costUsd ?? 0).toBe(0);
+    expect(grokAccount(ctx)?.usage?.spend?.sevenDay.costUsd ?? 0).toBe(0);
   });
 });

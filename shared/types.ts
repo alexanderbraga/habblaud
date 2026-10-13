@@ -296,8 +296,8 @@ export interface AccountUsage {
    * esgotados). Não é "0% usado": as janelas ficam ausentes.
    */
   noQuota?: boolean;
-  /** Consumo nas últimas 5 h e nos últimos 7 dias (Grok: não há limite, então não há percentual). */
-  spend?: { fiveHour: UsageSpend; sevenDay: UsageSpend };
+  /** Custo e tokens por trás da barra (Grok: só a semana, que é a janela do plano dele). */
+  spend?: { sevenDay: UsageSpend };
   /** Quando os números foram obtidos na origem (epoch ms). */
   fetchedAt: number;
 }

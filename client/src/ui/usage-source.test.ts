@@ -52,10 +52,10 @@ describe('cartão de uso de uma conta do Codex', () => {
 });
 
 describe('cartão de uso da conta do Grok (100% = o maior gasto já visto)', () => {
-  const spend = { fiveHour: { costUsd: 1.75, tokens: 1_100 }, sevenDay: { costUsd: 12.5, tokens: 2_300_000 } };
-  const grok = (over: Partial<Acc> = {}): Acc => ({ provider: 'grok', usageStatus: 'ok', configDir: '~/.grok', usage: { source: 'grok', fiveHour: win, sevenDay: win, spend, fetchedAt: 0 }, ...over });
+  const spend = { sevenDay: { costUsd: 12.5, tokens: 2_300_000 } };
+  const grok = (over: Partial<Acc> = {}): Acc => ({ provider: 'grok', usageStatus: 'ok', configDir: '~/.grok', usage: { source: 'grok', sevenDay: win, spend, fetchedAt: 0 }, ...over });
 
-  it('barras como as do Claude e do Codex; sem números = sem dados', () => {
+  it('só a barra da semana (5 h fica "—", como no Codex); sem números = sem dados', () => {
     expect(cardState(grok())).toBe('ok');
     expect(cardState(grok({ usageStatus: 'stale' }))).toBe('stale');
     expect(cardState(grok({ usage: undefined, usageStatus: 'disabled' }))).toBe('empty');
@@ -63,7 +63,7 @@ describe('cartão de uso da conta do Grok (100% = o maior gasto já visto)', () 
   });
 
   it('custo e tokens de cada janela na dica; origem e subtítulo próprios', () => {
-    expect(spendText(spend.fiveHour)).toMatch(/^US\$\s1,75 · 1,1 k tokens$/);
+    expect(spendText({ costUsd: 1.75, tokens: 1_100 })).toMatch(/^US\$\s1,75 · 1,1 k tokens$/);
     expect(spendText(spend.sevenDay)).toMatch(/^US\$\s12,50 · 2,3 M tokens$/);
     expect(sourceLabel({ source: 'grok', fetchedAt: 0 })).toBe('arquivos do Grok');
     expect(usageSubtitle(grok())).toBe('100% = seu maior gasto');
