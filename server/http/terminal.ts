@@ -51,6 +51,8 @@ export interface TerminalOptions {
    * = createParser.
    */
   parserFor?: (agentId: string) => TerminalParser | undefined;
+  /** Conferência do arquivo do terminal de um agente antes de cada leitura (SourceSet.checkerFor). */
+  checkerFor?: (agentId: string) => ((path: string) => boolean) | undefined;
   /** Fábrica do parser padrão (testes); padrão: createTerminalParser (o do Claude Code). */
   createParser?: () => TerminalParser;
   /** Conversa fictícia dos agentes do demo (testes); padrão: demoTerminalEntries. */
@@ -84,9 +86,9 @@ interface ConversationSource {
  * por pasta), para na primeira linha de outra pasta e devolve false: dali em diante a conversa não é mais desta
  * instância.
  */
-function parseInto(parser: TerminalParser, lines: readonly string[], out: TerminalEntry[], scope?: (cwd: string) => boolean): boolean {
+function parseInto(parser: TerminalParser, lines: readonly string[], out: TerminalEntry[], scope?: (cwd: string) => boolean, grok = false): boolean {
   for (const line of lines) {
-    if (scope && cwdOutOfScope(line, scope) !== undefined) return false;
+    if (scope && cwdOutOfScope(line, scope, grok) !== undefined) return false;
     let entries: TerminalEntry[];
     try {
       entries = parser.push(line);
@@ -104,6 +106,15 @@ interface ScopeGuard {
   scope?: (cwd: string) => boolean;
   /** O agente continua no escritório (ausente = conversa do histórico). */
   alive?: () => boolean;
+  /**
+   * Pasta conhecida da sessão (a sala do agente, ou a do índice da ferramenta no histórico): um arquivo sem nenhum
+   * `cwd` (o Grok nem sempre grava a pasta na conversa) vale se ela for de dentro.
+   */
+  cwd?: string;
+  /** Conversa do Grok: o escopo conta também o `current_dir`. */
+  grok?: boolean;
+  /** Conferência do arquivo antes de cada leitura (Grok: dentro de sessions/, sem links); falhou = o stream para. */
+  check?: (path: string) => boolean;
 }
 
 /**
@@ -128,8 +139,12 @@ class TranscriptSource implements ConversationSource {
 
   load(): TerminalInit {
     this.parser = this.o.createParser();
+    if (this.o.check && !this.o.check(this.tail.path)) this.closed = true;
     // Escopo por pasta: o arquivo inteiro precisa ser de dentro (uma troca de pasta antes da janela lida passaria).
-    if (this.o.scope && fileScope(this.tail.path, this.o.scope).status !== 'in') this.closed = true;
+    if (this.o.scope && !this.closed) {
+      const st = fileScope(this.tail.path, this.o.scope, this.o.grok).status;
+      if (st === 'out' || (st === 'unknown' && !(this.o.cwd !== undefined && this.o.scope(this.o.cwd)))) this.closed = true;
+    }
     if (this.closed) return { agentId: this.agentId, entries: [], truncated: false };
     const offset = this.tail.seekTail(this.o.initTailBytes);
     const keep = this.o.initEntries;
@@ -137,7 +152,7 @@ class TranscriptSource implements ConversationSource {
     let dropped = false;
     for (let i = 0; i < MAX_INIT_READS && !this.closed; i++) {
       const r = this.tail.read();
-      if (!parseInto(this.parser, r.lines, entries, this.o.scope)) this.closed = true;
+      if (!parseInto(this.parser, r.lines, entries, this.o.scope, this.o.grok)) this.closed = true;
       // Descarta o excesso pelo caminho (transcript com muitas entradas pequenas).
       if (entries.length > keep * 2) {
         entries = entries.slice(-keep);
@@ -157,6 +172,10 @@ class TranscriptSource implements ConversationSource {
       this.closed = true;
       return { stop: true };
     }
+    if (this.o.check && !this.o.check(this.tail.path)) {
+      this.closed = true;
+      return { stop: true };
+    }
     // /clear ou /resume no mesmo processo: o principal continua o mesmo, o transcript é outro.
     const path = this.o.transcriptPathOf(this.agentId);
     if (path && path !== this.tail.path) {
@@ -168,7 +187,7 @@ class TranscriptSource implements ConversationSource {
       // Arquivo sumido: `missing`, sem linhas; continua tentando nos próximos ciclos.
       const r = this.tail.read();
       if (r.reset) return { init: this.load() };
-      if (!parseInto(this.parser, r.lines, fresh, this.o.scope)) {
+      if (!parseInto(this.parser, r.lines, fresh, this.o.scope, this.o.grok)) {
         this.closed = true;
         return { append: fresh, stop: true };
       }
@@ -267,8 +286,17 @@ export class TerminalStreams {
    * `streamId` vai no `init` (ex.: "session:<conta>:<sessionId>"); `createParser` é o da ferramenta da sessão
    * (HistorySession.createParser; padrão: o do Claude Code). Mesmos erros de attach (429/500).
    */
-  attachSession(req: IncomingMessage, res: ServerResponse, streamId: string, path: string, createParser?: () => TerminalParser): void {
-    const o = { transcriptPathOf: () => undefined, createParser: createParser ?? this.createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries, scope: this.scope() };
+  attachSession(
+    req: IncomingMessage,
+    res: ServerResponse,
+    streamId: string,
+    path: string,
+    createParser?: () => TerminalParser,
+    cwd?: string,
+    grok?: boolean,
+    check?: (path: string) => boolean,
+  ): void {
+    const o = { transcriptPathOf: () => undefined, createParser: createParser ?? this.createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries, scope: this.scope(), cwd, grok, check };
     this.serve(req, res, streamId, new TranscriptSource(streamId, path, o, this.sessionPollMs));
   }
 
@@ -316,6 +344,17 @@ export class TerminalStreams {
     return office.scoped ? office.inScope : undefined;
   }
 
+  /**
+   * Pasta da sala de um agente do Grok, a única ferramenta cuja conversa pode não ter nenhum `cwd` (a fonte dele
+   * confere a pasta pela lista de sessões abertas e pelo summary.json). Claude Code e Codex sempre gravam a pasta: um
+   * arquivo deles sem nenhuma continua recusado (pode ser outro arquivo no lugar do transcript).
+   */
+  private agentCwd(agentId: string): string | undefined {
+    const agent = this.opts.office.get(agentId);
+    if (!agent || agent.provider !== 'grok') return undefined;
+    return this.opts.office.roomPath(agent.roomId);
+  }
+
   /** Fonte da conversa do agente, ou a mensagem do 404. */
   private sourceFor(agentId: string): ConversationSource | string {
     const office = this.opts.office;
@@ -331,6 +370,9 @@ export class TerminalStreams {
         initEntries: this.initEntries,
         scope: this.scope(),
         alive: office.scoped ? () => office.has(agentId) : undefined,
+        cwd: this.agentCwd(agentId),
+        grok: this.opts.office.get(agentId)?.provider === 'grok',
+        check: this.opts.checkerFor?.(agentId),
       };
       return new TranscriptSource(agentId, path, o, this.pollMs);
     }

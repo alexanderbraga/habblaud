@@ -23,6 +23,16 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(isCodex(null)).toBe(false);
   });
 
+  it('Grok: selo, rótulo do chip e letra de uma conta fora do snapshot', () => {
+    expect(showsProviderTag('grok', 'Conta')).toBe(true);
+    expect(showsProviderTag('grok', 'Grok')).toBe(false);
+    expect(accountChipLabel({ name: 'Conta', provider: 'grok' }, '.grok', 'grok')).toBe('Conta · Grok');
+    expect(accountChipLabel(undefined, '.grok', 'grok')).toBe('.grok · Grok');
+    expect(accountProvider(undefined, '.grok')).toBe('grok');
+    expect(fallbackShort('.grok')).toBe('G');
+    expect(emptyOfficeHint([{ short: 'G', provider: 'grok' }])).toContain('ou o Grok');
+  });
+
   it('id com cara de pasta do Codex (só quando a conta já não está no snapshot)', () => {
     for (const id of ['.codex', 'demo:.codex', '.codex-trabalho', '.codex~2', '/Users/ana/.codex', 'codex']) expect(looksLikeCodexId(id), id).toBe(true);
     for (const id of ['.claude', '.claude-conta2', 'demo:.claude', 'meucodex', '.codexy', '']) expect(looksLikeCodexId(id), id).toBe(false);

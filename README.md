@@ -254,6 +254,11 @@ where requests go: whoever can change it can already open Habblaud on this machi
 [Security](#privacy-and-security)). Folder routing uses paths with `/` (macOS and Linux); on Windows requests go to the
 usual port.
 
+### 5. Grok in the office (optional)
+
+If you use xAI's **Grok** (the `grok` CLI), its open sessions also join the office, each with the **GROK** badge,
+without installing anything. See [Grok](#grok).
+
 ### Open on your phone (optional)
 
 By default Habblaud only accepts connections from the computer it runs on. To open it on your phone (on the same Wi-Fi), with Docker:
@@ -634,6 +639,24 @@ Codex account chip is hollow and carries the **CODEX** tag.
   little while to leave after you close the terminal.
 - ChatGPT cloud conversations (with no file on the computer) don't show up. `HABBLAUD_CODEX=0` turns Codex off.
 
+### Grok
+
+Open sessions of the `grok` CLI (the TUI) show up like Codex's: character, project room, activity, tasks, title,
+model, tokens, terminal and history. The account chip is outlined and carries the **GROK** badge.
+
+- **Nothing to install:** Habblaud reads what Grok itself writes to `~/.grok` (or `GROK_HOME`): the list of open
+  sessions (`active_sessions.json`) and, for each session, the conversation (`updates.jsonl`) and the summary
+  (`summary.json`). It never reads `auth.json` or `config.toml`.
+- **Not yet possible:** approving requests or sending messages from the office, and Grok doesn't report usage limits
+  (its account stays out of the usage panel). An open approval request doesn't raise the character's hand: it stays
+  "working" until the turn ends.
+- `grok -p` sessions (without the TUI) and subagent sessions don't join the office; subagent ones are also left out of
+  the history. A session only counts as open while its process really is `grok`.
+- **In Docker** `docker:up` mounts only `~/.grok/sessions`, read-only. Inside, the list of open sessions doesn't work
+  (Grok swaps it for another file on every change), so a conversation modified in the last 30 minutes counts: a
+  closed session takes up to 30 minutes to leave, and one open but idle for longer disappears until the next write.
+- `HABBLAUD_GROK=0` turns Grok off.
+
 ### GitHub in the office
 
 What the agents do on GitHub livens up the project's room, with no token and no internet access: Habblaud reads the
@@ -755,15 +778,16 @@ Everything works without configuring anything. If you need to adjust something, 
 | `HABBLAUD_CODEX` | on | `0` turns off Codex in the office. |
 | `HABBLAUD_CODEX_DIRS` | automatic detection | Codex folders, comma-separated (instead of `~/.codex*` and `CODEX_HOME`). |
 | `HABBLAUD_CODEX_BIN` | `codex` from PATH (on Windows, `codex.exe`) | The Codex binary that delivers the messages (`codex queue`), in Node mode or in `npm run codex:bridge`. |
+| `HABBLAUD_GROK` | on | `0` turns off Grok in the office. The folder comes from `GROK_HOME` (default `~/.grok`). |
 | `HABBLAUD_UPDATE_CHECK` | on | `0` turns off the new-version check (a request to the repository's releases on GitHub every 6 h). |
 | `HABBLAUD_LANG` | system language (except English), otherwise `pt-BR` | Language of the texts the server builds (activities, notices, logs): `pt-BR`, `en`, `es` or `fr`. The interface follows the browser or the choice in Settings › Language. See [Languages](#languages). |
-| `HABBLAUD_PROJECT_ROOTS` | all folders | Only shows the sessions open in these folders (or inside them), comma-separated; `~` works. E.g. `~/Claude/company-a`. The terminal history, permissions and open terminals follow the same filter, and a session that starts working in another folder leaves the office. Names, timelapse and My day are kept in a folder of their own for each scope. Paths are compared as the tool records them (with `..` resolved, without following links, case-sensitive), and any `cwd` field in the conversation counts: a tool argument with that name pointing to another folder also takes the session out. Accounts (name and config folder) still show. |
+| `HABBLAUD_PROJECT_ROOTS` | all folders | Only shows the sessions open in these folders (or inside them), comma-separated; `~` works. E.g. `~/Claude/company-a`. The terminal history, permissions and open terminals follow the same filter, and a session that starts working in another folder leaves the office. Names, timelapse and My day are kept in a folder of their own for each scope. Paths are compared as the tool records them (with `..` resolved, without following links, case-sensitive), and any `cwd` field (or Grok's `current_dir`) in the conversation counts: a tool argument with that name pointing to another folder also takes the session out. Accounts (name and config folder) still show. |
 | `HABBLAUD_INSTANCE` | — | `docker:up`/`docker:down` only: name of an extra instance (lowercase, digits and hyphen), with its own container, volume and `<name>.localhost` address. See [One office per folder](#one-office-per-folder-optional). |
 | `HABBLAUD_ACCOUNTS` | — | JSON to customize name, letter or color, matched by the account folder name. E.g. `[{"id":".claude-conta2","name":"Trabalho","short":"T","color":"#5cc97b"}]`. |
 
 **In Docker**, `HABBLAUD_PORT`, `HABBLAUD_BIND`, `HABBLAUD_ALLOWED_HOSTS`, `HABBLAUD_DEMO`, `HABBLAUD_TERMINAL`,
-`HABBLAUD_MENSAGENS`, `HABBLAUD_CODEX`, `HABBLAUD_UPDATE_CHECK`, `HABBLAUD_LANG`, `HABBLAUD_PTY` and the
-`HABBLAUD_REMOTE_*` apply (in `.env` or in the environment), as do `HABBLAUD_CLAUDE_DIRS`, `HABBLAUD_CODEX_DIRS`, `HABBLAUD_USAGE_DIR`,
+`HABBLAUD_MENSAGENS`, `HABBLAUD_CODEX`, `HABBLAUD_GROK`, `HABBLAUD_UPDATE_CHECK`, `HABBLAUD_LANG`, `HABBLAUD_PTY` and the
+`HABBLAUD_REMOTE_*` apply (in `.env` or in the environment), as do `HABBLAUD_CLAUDE_DIRS`, `HABBLAUD_CODEX_DIRS`, `GROK_HOME`, `HABBLAUD_USAGE_DIR`,
 `HABBLAUD_PROJECT_ROOTS`, `HABBLAUD_INSTANCE` and `HABBLAUD_ACCOUNTS` (read by `docker:up` on the host); the rest are fixed inside the container. Options: `npm run docker:up -- --no-build` (starts without rebuilding),
 `npm run docker:down` (stops) and `npm run docker:logs` (follows the logs).
 

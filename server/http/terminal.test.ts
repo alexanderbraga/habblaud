@@ -472,6 +472,77 @@ describe('terminal: transporte', () => {
     }
   });
 
+  it('escopo por pasta: conversa sem nenhum cwd vale pela sala só no Grok; no Claude Code, não; com uma linha de fora, nunca', async () => {
+    const env = await serve({ projectRoots: ['/p/loja'] });
+    const GROK = '.grok:g1';
+    env.office.addMain({ id: GROK, provider: 'grok', account: 'acc', sessionId: 'g1', cwd: '/p/loja', role: 'Agente principal (Grok)', startedAt: Date.now(), status: 'working' });
+    try {
+      const path = join(env.dir, 'g1.jsonl');
+      writeLines(path, [line('a')]);
+      env.paths.set(GROK, path);
+      const s = await open(env.base, route(GROK));
+      await waitFor(() => expect(view(s)).toEqual(['a']));
+      s.close();
+      // Claude Code sempre grava a pasta: um arquivo sem nenhuma (outro no lugar do transcript) não sai.
+      const claude = join(env.dir, 'c1.jsonl');
+      writeLines(claude, [JSON.stringify({ id: 'x', text: 'SEGREDO_CLAUDE' })]);
+      env.paths.set(MAIN, claude);
+      const c = await open(env.base, route(MAIN));
+      await waitFor(() => expect(inits(c)).toHaveLength(1));
+      expect(inits(c)[0].entries).toEqual([]);
+      expect(c.raw).not.toContain('SEGREDO_CLAUDE');
+      c.close();
+      const out = join(env.dir, 'g2.jsonl');
+      writeLines(out, [JSON.stringify({ id: 'fora', text: 'SEGREDO', cwd: '/p/outra' }), line('b')]);
+      env.paths.set(GROK, out);
+      const u = await open(env.base, route(GROK));
+      await waitFor(() => expect(inits(u)).toHaveLength(1));
+      expect(inits(u)[0].entries).toEqual([]);
+      expect(u.raw).not.toContain('SEGREDO');
+      u.close();
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('conferência do arquivo (Grok): falhou depois de conectado, o stream para e nada novo sai', async () => {
+    let ok = true;
+    const env = await serve({ streams: { checkerFor: () => () => ok } });
+    try {
+      const path = join(env.dir, 'k1.jsonl');
+      writeLines(path, [line('a')]);
+      env.paths.set(MAIN, path);
+      const s = await open(env.base, route(MAIN));
+      await waitFor(() => expect(view(s)).toEqual(['a']));
+      ok = false;
+      appendLines(path, [line('SEGREDO_TROCADO')]);
+      await new Promise((r) => setTimeout(r, 150));
+      expect(s.raw).not.toContain('SEGREDO_TROCADO');
+      s.close();
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('conferência do arquivo (Grok): recusada ao conectar, o escopo nem abre o arquivo', async () => {
+    const env = await serve({ projectRoots: ['/p'], streams: { checkerFor: () => () => false } });
+    const seen: string[] = [];
+    const inScope = env.office.inScope;
+    (env.office as { inScope: (cwd: string) => boolean }).inScope = (cwd) => (seen.push(cwd), inScope(cwd));
+    try {
+      const path = join(env.dir, 'k2.jsonl');
+      writeLines(path, [JSON.stringify({ id: 'a', text: 'SEGREDO', cwd: '/p/externo' })]);
+      env.paths.set(MAIN, path);
+      const s = await open(env.base, route(MAIN));
+      await new Promise((r) => setTimeout(r, 100));
+      expect(s.raw).not.toContain('SEGREDO');
+      expect(seen).not.toContain('/p/externo');
+      s.close();
+    } finally {
+      await env.close();
+    }
+  });
+
   it('stop() encerra os streams abertos', async () => {
     const env = await serve();
     try {

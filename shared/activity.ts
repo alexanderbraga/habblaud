@@ -108,6 +108,7 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   // Chaves com prefixo conhecido.
   [/\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{8,}/g, 'sk-***'],
   [/\bgh[pousr]_[A-Za-z0-9]{16,}/g, 'gh*_***'],
+  [/\bxai-[A-Za-z0-9_-]{16,}/g, 'xai-***'],
   [/\bgithub_pat_[A-Za-z0-9_]{16,}/g, 'github_pat_***'],
   [/\bglpat-[A-Za-z0-9_-]{16,}/g, 'glpat-***'],
   [/\bxox[abposr]-[A-Za-z0-9-]{8,}/g, 'xox*-***'],

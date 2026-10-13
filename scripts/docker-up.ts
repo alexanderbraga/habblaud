@@ -331,6 +331,38 @@ export function planCodexMounts(dirs: string[], accounts: DetectedAccount[], res
   return out;
 }
 
+/** Onde as sessões do Grok aparecem no container: /grok/sessions (a pasta lida pelo servidor é /grok). */
+const GROK_CONTAINER_DIR = '/grok';
+
+/** Montagem do Grok: SOMENTE <GROK_HOME>/sessions, somente leitura. */
+export interface GrokMount {
+  hostDir: string;
+  binds: BindMount[];
+}
+
+/** HABBLAUD_GROK desligado (0, false, off, no) no ambiente de quem roda o docker:up. */
+export function grokDisabled(env: NodeJS.ProcessEnv): boolean {
+  const v = env.HABBLAUD_GROK?.trim();
+  return !!v && /^(0|false|off|no)$/i.test(v);
+}
+
+/**
+ * Pasta do Grok no host (GROK_HOME ou ~/.grok) e a montagem só de sessions/. Nunca auth.json, config.toml nem o
+ * resto da pasta; nem o active_sessions.json (o Grok o troca por rename, e um bind de arquivo único ficaria preso à
+ * versão antiga: no container a presença vem da conversa modificada há pouco).
+ */
+export function planGrokMount(env: NodeJS.ProcessEnv, home: string, resolveDir: (p: string) => string | undefined = realDir): GrokMount | undefined {
+  if (grokDisabled(env)) return undefined;
+  const raw = env.GROK_HOME?.trim();
+  const hostDir = raw ? expandHome(raw, home) : join(home, '.grok');
+  const source = resolveDir(join(hostDir, 'sessions'));
+  if (!source) return undefined;
+  // `sessions` como link para a própria pasta do Grok (ou uma acima dela) montaria auth.json junto: recusa.
+  const home_ = resolveDir(hostDir) ?? hostDir;
+  if (home_ === source || home_.startsWith(source.endsWith('/') ? source : `${source}/`)) return undefined;
+  return { hostDir, binds: [{ source, target: posix.join(GROK_CONTAINER_DIR, 'sessions') }] };
+}
+
 /** Metadados das contas do Codex para HABBLAUD_ACCOUNTS: `provider: 'codex'` e a pasta do HOST em `configDir`. */
 export function codexAccountsPayload(mounts: AccountMount[]): AccountPayload[] {
   return mounts.map(({ account: a, hostDir, mountDir }) => {
@@ -428,12 +460,14 @@ export function renderOverride(
   remoteTlsDir?: string,
   extraPorts: string[] = [],
   projectRoots: string[] = [],
+  grok?: GrokMount,
 ): string {
   const env: Array<[string, string]> = [
     ['HABBLAUD_CLAUDE_DIRS', mounts.map((m) => m.mountDir).join(',')],
     ['HABBLAUD_ACCOUNTS', JSON.stringify([...accountsPayload(mounts), ...codexAccountsPayload(codex)])],
   ];
   if (codex.length) env.push(['HABBLAUD_CODEX_DIRS', codex.map((m) => m.mountDir).join(',')]);
+  if (grok) env.push(['HABBLAUD_GROK_DIR', GROK_CONTAINER_DIR], ['HABBLAUD_GROK_HOST_DIR', grok.hostDir]);
   if (usageDir) env.push(['HABBLAUD_USAGE_DIR', CONTAINER_USAGE_DIR]);
   if (timeZone) env.push(['TZ', timeZone]);
   if (projectRoots.length) env.push(['HABBLAUD_PROJECT_ROOTS', projectRoots.join(',')]);
@@ -442,6 +476,7 @@ export function renderOverride(
     '# Contém caminhos do host e e-mails das contas: fica fora do git e com permissão 600.',
     '# Montagens: SOMENTE <conta>/projects, <conta>/sessions e a pasta do uso do statusline, todas somente leitura.',
     ...(codex.length ? ['# Codex: SOMENTE <pasta>/sessions, <pasta>/archived_sessions e <pasta>/thread-writer-locks, somente leitura.'] : []),
+    ...(grok ? ['# Grok: SOMENTE <GROK_HOME>/sessions, somente leitura.'] : []),
     'services:',
     `  ${SERVICE}:`,
     '    environment:',
@@ -449,7 +484,7 @@ export function renderOverride(
   ];
   // O Compose junta estas portas às do docker-compose.yml.
   if (extraPorts.length) lines.push('    ports:', ...extraPorts.map((p) => `      - ${yamlString(p)}`));
-  const binds = [...mounts, ...codex].flatMap((m) => m.binds);
+  const binds = [...mounts, ...codex, ...(grok ? [grok] : [])].flatMap((m) => m.binds);
   if (usageDir) binds.push({ source: usageDir, target: CONTAINER_USAGE_DIR });
   // Acesso remoto: SÓ a pasta do certificado do servidor (a chave da CA fica no host).
   if (remoteTlsDir) binds.push({ source: remoteTlsDir, target: CONTAINER_REMOTE_TLS_DIR });
@@ -795,6 +830,9 @@ async function up(opts: Options, port: number): Promise<void> {
     }
   }
 
+  const grokMount = planGrokMount(process.env, HOME);
+  if (grokMount) say(`Grok: monta sessions de ${tildify(grokMount.hostDir)}, somente leitura (no container, sessão aberta = conversa modificada nos últimos 30 min).`);
+
   const projectRoots = projectRootsOf(process.env, HOME);
   if (projectRoots.length) say(tr('Escopo: só as sessões abertas em {0}.', [projectRoots.map(tildify).join(', ')]));
   const registry = readRegistry();
@@ -812,7 +850,7 @@ async function up(opts: Options, port: number): Promise<void> {
   if (names.instance && remoteConfigured()) say(tr('Acesso pelo celular: fica com o escritório sem HABBLAUD_INSTANCE (a porta dele é uma só no host).'));
   const overrideFile = join(ROOT, names.overrideFile);
   const tmp = `${overrideFile}.tmp`;
-  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts, projectRoots), { mode: 0o600 });
+  writeFileSync(tmp, renderOverride(mounts, new Date(), usageDir, hostTimeZone(), codexMounts, remoteTlsDir, remotePorts, projectRoots, grokMount), { mode: 0o600 });
   chmodSync(tmp, 0o600);
   renameSync(tmp, overrideFile);
   say(tr('{0} gerado.', [names.overrideFile]));

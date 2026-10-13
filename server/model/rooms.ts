@@ -24,6 +24,11 @@ export function inRoots(cwd: string, roots: readonly string[]): boolean {
 
 /** Todo `"cwd"` de um texto de JSONL (Claude Code: em cada linha; Codex: session_meta, turn_context e comandos). */
 const CWD_RE = /"cwd"\s*:\s*("(?:[^"\\]|\\.)*")/g;
+/**
+ * Na conversa do Grok também o `"current_dir"` (a pasta onde um comando rodou, no resultado dele). Só nela: no Claude
+ * Code e no Codex um campo com esse nome pode ser dado de uma ferramenta (um registro com `current_dir: "archive"`).
+ */
+const GROK_CWD_RE = /"(?:cwd|current_dir)"\s*:\s*("(?:[^"\\]|\\.)*")/g;
 
 /**
  * Os cwds citados no texto, já como caminho (uma URI file:// do Codex vira o caminho dela). Busca no texto cru, sem
@@ -31,10 +36,10 @@ const CWD_RE = /"cwd"\s*:\s*("(?:[^"\\]|\\.)*")/g;
  * ponytail: casa a chave em qualquer nível (um argumento de ferramenta chamado cwd também conta) e só a grafia comum
  * ("cwd", sem escapes); é o que o Claude Code e o Codex gravam.
  */
-export function cwdsInText(text: string): string[] {
-  if (!text.includes('"cwd"')) return [];
+export function cwdsInText(text: string, grok = false): string[] {
+  if (!text.includes('"cwd"') && !(grok && text.includes('"current_dir"'))) return [];
   const out: string[] = [];
-  for (const m of text.matchAll(CWD_RE)) {
+  for (const m of text.matchAll(grok ? GROK_CWD_RE : CWD_RE)) {
     let v: unknown;
     try {
       v = JSON.parse(m[1]);
@@ -60,8 +65,8 @@ export function cwdsInText(text: string): string[] {
 }
 
 /** A primeira pasta fora do escopo citada na linha, ou undefined. */
-export function cwdOutOfScope(line: string, scope: (cwd: string) => boolean): string | undefined {
-  return cwdsInText(line).find((cwd) => !scope(cwd));
+export function cwdOutOfScope(line: string, scope: (cwd: string) => boolean, grok = false): string | undefined {
+  return cwdsInText(line, grok).find((cwd) => !scope(cwd));
 }
 
 function segments(path: string): string[] {

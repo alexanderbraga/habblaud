@@ -37,6 +37,9 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
+import { discoverGrokDir } from './sources/grok/files';
+import { GrokHistory } from './sources/grok/history';
+import { GrokSource } from './sources/grok/source';
 import { createBuildReader } from './build';
 import { UpdateChecker } from './updates/checker';
 import { tr } from '../shared/i18n';
@@ -115,6 +118,12 @@ if (codex) agents.add(codex);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
+// Grok (GROK_HOME ou ~/.grok; no Docker, a pasta montada em HABBLAUD_GROK_DIR; HABBLAUD_GROK=0 desliga): só lê.
+const grokDir = config.grok ? discoverGrokDir(process.env, config.home) : undefined;
+const grok = grokDir
+  ? new GrokSource({ accounts, office, dir: grokDir, hostDir: process.env.HABBLAUD_GROK_HOST_DIR?.trim() || undefined, inDocker: config.inDocker })
+  : undefined;
+if (grok) agents.add(grok);
 late.office = office;
 late.agents = agents;
 // Página que pode responder pelo escritório: Host local na porta local; na remota, só com permissions liberado.
@@ -127,7 +136,12 @@ stats.load();
 // Terminal: só existe com bind local (ver terminalOffReason em config.ts).
 // Cada agente com o parser da ferramenta dele (o do Claude Code por padrão).
 const terminals = config.terminal
-  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id) })
+  ? new TerminalStreams({
+      office,
+      transcriptPathOf: (id) => agents.transcriptPathOf(id),
+      parserFor: (id) => agents.parserFor(id),
+      checkerFor: (id) => agents.checkerFor(id),
+    })
   : undefined;
 // Histórico do terminal (sessões recentes, abertas ou encerradas, de todas as ferramentas): mesma trava.
 const inScope = config.projectRoots.length ? office.inScope : undefined;
@@ -138,6 +152,18 @@ const history = config.terminal
       inScope,
     )
   : undefined;
+if (history && grok) {
+  history.add(
+    new GrokHistory({
+      account: () => {
+        const e = accounts.entriesOf('grok')[0];
+        return e ? { id: e.id, dir: e.dir } : undefined;
+      },
+      openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid),
+      inScope,
+    }),
+  );
+}
 if (history && codex) history.add(new CodexHistory({ accounts: () => accounts.entriesOf('codex'), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid), inScope }));
 // Entregas: o fim de cada pedido, lido dos transcripts do histórico (mesma trava do terminal). Os arquivos entregues
 // são lidos aqui (Node, ou pasta de conta montada no Docker) ou pelo auxiliar do host.

@@ -551,7 +551,6 @@ export const FR: Readonly<Record<string, string>> = {
   "Conta desconhecida": "Compte inconnu",
   " · plano {0}": " · abonnement {0}",
   "Abra o Claude Code em qualquer projeto{0} e veja seu agente chegar.": "Ouvrez Claude Code dans n'importe quel projet{0} et regardez votre agent arriver.",
-  "Abra o Claude Code{0} ou o Codex em qualquer projeto e veja seu agente chegar.": "Ouvrez Claude Code{0} ou Codex dans n'importe quel projet et regardez votre agent arriver.",
   "Para ver o Codex ao vivo e aprovar pelo escritório: `npm run codex:install` e aprove os hooks em `/hooks` no Codex.": "Pour voir Codex en direct et valider depuis le bureau : `npm run codex:install` puis validez les hooks dans `/hooks` dans Codex.",
   "Pergunta antes de quase tudo": "Demande avant presque tout",
   "Pergunta quando precisa": "Demande quand c'est nécessaire",
@@ -2609,4 +2608,9 @@ export const FR: Readonly<Record<string, string>> = {
   "a porta {0} já é da instância {1}. Use outra: HABBLAUD_PORT=<porta livre>.": "le port {0} appartient déjà à l'instance {1}. Utilisez-en un autre : HABBLAUD_PORT=<port libre>.",
   "já há um Habblaud respondendo na porta {0} (a instância de sempre ou outra). Use outra: HABBLAUD_PORT=<porta livre>.": "un Habblaud répond déjà sur le port {0} (l'instance habituelle ou une autre). Utilisez-en un autre : HABBLAUD_PORT=<port libre>.",
   "não consegui atualizar {0} ({1}); os hooks vão usar a porta padrão.": "impossible de mettre à jour {0} ({1}) ; les hooks utiliseront le port par défaut.",
+  "Turno encerrado ({0})": "Tour terminé ({0})",
+  "Agente principal (Grok)": "Agent principal (Grok)",
+  "Para responder, use o Grok": "Pour répondre, utilisez Grok",
+  "Abra o Claude Code{0} ou o {1} em qualquer projeto e veja seu agente chegar.": "Ouvrez Claude Code{0} ou {1} dans n'importe quel projet et regardez votre agent arriver.",
+  "Abra o Claude Code{0}, o Codex ou o Grok em qualquer projeto e veja seu agente chegar.": "Ouvrez Claude Code{0}, Codex ou Grok dans n'importe quel projet et regardez votre agent arriver.",
 };

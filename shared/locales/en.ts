@@ -558,7 +558,6 @@ export const EN: Readonly<Record<string, string>> = {
   "Conta desconhecida": "Unknown account",
   " · plano {0}": " · {0} plan",
   "Abra o Claude Code em qualquer projeto{0} e veja seu agente chegar.": "Open Claude Code in any project{0} and watch your agent arrive.",
-  "Abra o Claude Code{0} ou o Codex em qualquer projeto e veja seu agente chegar.": "Open Claude Code{0} or Codex in any project and watch your agent arrive.",
   "Para ver o Codex ao vivo e aprovar pelo escritório: `npm run codex:install` e aprove os hooks em `/hooks` no Codex.": "To see Codex live and approve from the office: `npm run codex:install`, then approve the hooks in `/hooks` in Codex.",
   "Pergunta antes de quase tudo": "Asks before almost everything",
   "Pergunta quando precisa": "Asks when needed",
@@ -2593,4 +2592,9 @@ export const EN: Readonly<Record<string, string>> = {
   "a porta {0} já é da instância {1}. Use outra: HABBLAUD_PORT=<porta livre>.": "port {0} already belongs to instance {1}. Use another one: HABBLAUD_PORT=<free port>.",
   "já há um Habblaud respondendo na porta {0} (a instância de sempre ou outra). Use outra: HABBLAUD_PORT=<porta livre>.": "a Habblaud is already answering on port {0} (the usual instance or another one). Use another one: HABBLAUD_PORT=<free port>.",
   "não consegui atualizar {0} ({1}); os hooks vão usar a porta padrão.": "couldn't update {0} ({1}); the hooks will use the default port.",
+  "Turno encerrado ({0})": "Turn ended ({0})",
+  "Agente principal (Grok)": "Main agent (Grok)",
+  "Para responder, use o Grok": "To reply, use Grok",
+  "Abra o Claude Code{0} ou o {1} em qualquer projeto e veja seu agente chegar.": "Open Claude Code{0} or {1} in any project and watch your agent arrive.",
+  "Abra o Claude Code{0}, o Codex ou o Grok em qualquer projeto e veja seu agente chegar.": "Open Claude Code{0}, Codex or Grok in any project and watch your agent arrive.",
 };
